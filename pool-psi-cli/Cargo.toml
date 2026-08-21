@@ -1,0 +1,18 @@
+[package]
+name = "pool-psi-cli"
+version = "0.1.0"
+edition = "2024"
+description = "Command-line private set intersection over the Pool OPRF"
+license = "MIT"
+
+[dependencies]
+anyhow = { workspace = true }
+pool-prf = { workspace = true }
+pool-psi = { workspace = true }
+clap = { workspace = true }
+cryprot-net = { workspace = true }
+rand = { workspace = true }
+s2n-quic = { workspace = true }
+s2n-tls = { workspace = true }
+tokio = { workspace = true }
+zeroize = { workspace = true }
