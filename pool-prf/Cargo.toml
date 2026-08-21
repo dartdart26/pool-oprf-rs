@@ -1,0 +1,15 @@
+[package]
+name = "pool-prf"
+version = "0.1.0"
+edition = "2024"
+description = "LWR-based PRF from the Pool OPRF paper"
+license = "MIT"
+
+[dependencies]
+blake3 = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }

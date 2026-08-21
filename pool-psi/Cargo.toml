@@ -1,0 +1,23 @@
+[package]
+name = "pool-psi"
+version = "0.1.0"
+edition = "2024"
+description = "Private Set Intersection built on the Pool OPRF"
+license = "MIT"
+
+[dependencies]
+pool-prf = { workspace = true }
+pool-oprf = { workspace = true }
+cryprot-net = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+cryprot-net = { workspace = true, features = ["__testing"] }
+cryprot-core = { workspace = true, features = ["__testing"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
