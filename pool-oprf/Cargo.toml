@@ -1,0 +1,42 @@
+[package]
+name = "pool-oprf"
+version = "0.1.0"
+edition = "2024"
+description = "Post-quantum OPRF based on the Pool protocol (OT + LWR)"
+license = "MIT"
+
+[features]
+# Preprocess with silent OT instead of IKNP OT extension. Table 4 of the paper
+# puts silent OT at a small fraction of IKNP's communication and several times
+# its runtime, so it suits a server that preprocesses ahead of time and pays
+# for bandwidth.
+silent-ot = []
+
+[dependencies]
+pool-prf = { workspace = true }
+cryprot-core = { workspace = true }
+cryprot-net = { workspace = true }
+cryprot-ot = { workspace = true }
+async-trait = { workspace = true }
+blake3 = { workspace = true }
+bitstream-io = { workspace = true }
+bitvec = { workspace = true }
+futures = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_bytes = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+cryprot-net = { workspace = true, features = ["__testing"] }
+cryprot-core = { workspace = true, features = ["__testing"] }
+bincode = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[bench]]
+name = "online"
+harness = false

@@ -1,0 +1,11 @@
+[build]
+rustflags = [
+    "-C",
+    "target-cpu=native",
+    # s2n-quic picks its TLS security policy at compile time from this cfg.
+    "--cfg",
+    "s2n_quic_enable_pq_tls",
+    # Declare it so branching on it does not trip `unexpected_cfgs`.
+    "--check-cfg",
+    "cfg(s2n_quic_enable_pq_tls)",
+]
