@@ -52,7 +52,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 pub type Uid = [u8; LAMBDA_BYTES];
 
 /// Sample a fresh `uid`.
-pub fn random_uid(rng: &mut impl rand::Rng) -> Uid {
+pub fn random_uid(rng: &mut (impl Rng + CryptoRng)) -> Uid {
     let mut uid = Uid::default();
     rng.fill(&mut uid);
     uid
