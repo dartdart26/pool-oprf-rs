@@ -39,3 +39,7 @@ zeroize = { version = "1", features = ["derive"] }
 [workspace.lints.rust]
 unsafe_code = "forbid"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(s2n_quic_enable_pq_tls)'] }
+
+[workspace.lints.clippy]
+# Prefer From over `as` where the conversion cannot lose anything.
+cast_lossless = "warn"
