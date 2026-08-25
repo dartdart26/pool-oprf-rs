@@ -5,6 +5,9 @@ edition = "2024"
 description = "Command-line private set intersection over the Pool OPRF"
 license = "MIT"
 
+[features]
+silent-ot = ["pool-psi/silent-ot"]
+
 [dependencies]
 anyhow = { workspace = true }
 pool-prf = { workspace = true }
@@ -16,3 +19,6 @@ s2n-quic = { workspace = true }
 s2n-tls = { workspace = true }
 tokio = { workspace = true }
 zeroize = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(s2n_quic_enable_pq_tls)'] }

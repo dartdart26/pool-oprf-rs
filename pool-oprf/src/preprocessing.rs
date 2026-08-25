@@ -385,6 +385,12 @@ pub enum PreprocError {
 /// The opening message: `uid` followed by `tau` as a little-endian `u64`.
 const HELLO_BYTES: usize = LAMBDA_BYTES + 8;
 
+const MAX_CONTROL_FRAME_BYTES: usize = N + 9;
+const _: () = assert!(
+    HELLO_BYTES <= N,
+    "incorrect max control frame size calculation"
+);
+
 const _: () = assert!(
     size_of::<usize>() <= size_of::<u64>(),
     "tau is sent as a u64"
@@ -426,6 +432,10 @@ pub async fn preproc_client(
     let binary_ot_conn = conn.sub_connection();
     let delta_ot_conn = conn.sub_connection();
     let (mut msg_send, mut msg_recv) = conn.stream::<Vec<u8>>().await?;
+    msg_recv
+        .get_mut()
+        .decoder_mut()
+        .set_max_frame_length(MAX_CONTROL_FRAME_BYTES);
 
     // Line (1): sample uid and share it with the server, along with tau.
     //
@@ -500,6 +510,10 @@ pub async fn preproc_server(
     let binary_ot_conn = conn.sub_connection();
     let delta_ot_conn = conn.sub_connection();
     let (mut msg_send, mut msg_recv) = conn.stream::<Vec<u8>>().await?;
+    msg_recv
+        .get_mut()
+        .decoder_mut()
+        .set_max_frame_length(MAX_CONTROL_FRAME_BYTES);
 
     // Line (1): receive uid, and the tau the client is preprocessing for.
     let hello = msg_recv
