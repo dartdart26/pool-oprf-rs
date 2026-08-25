@@ -256,9 +256,9 @@ fn request_evaluation(
         let r_not_bhats = state.r_not_bhat(i, first_slot);
 
         for k in 0..H_ROWS {
-            let r_bhat = r_bhats[k] as ZqAccum;
-            let r_not_bhat = r_not_bhats[k] as ZqAccum;
-            e[k][i] = reduce_q(a[k][i] as ZqAccum + r_bhat + r_not_bhat);
+            let r_bhat = ZqAccum::from(r_bhats[k]);
+            let r_not_bhat = ZqAccum::from(r_not_bhats[k]);
+            e[k][i] = reduce_q(ZqAccum::from(a[k][i]) + r_bhat + r_not_bhat);
             r_sigma_acc[k] += r_bhat;
         }
     }
@@ -355,12 +355,12 @@ fn blind_eval_evaluation(
         // r^ctr_{b_i, i} for each row
         let r = state.r(i, first_slot);
 
-        let s = sk_i as ZqAccum;
+        let s = ZqAccum::from(sk_i);
 
         for k in 0..H_ROWS {
-            let r_k = r[k] as ZqAccum;
+            let r_k = ZqAccum::from(r[k]);
             let a_tilde_0 = r_k;
-            let a_tilde_1 = sub_q(reqs[k].e[i], r[k]) as ZqAccum;
+            let a_tilde_1 = ZqAccum::from(sub_q(reqs[k].e[i], r[k]));
             a_tilde_acc[k] += a_tilde_0 * (1 - s) + a_tilde_1 * s;
         }
     }
@@ -538,7 +538,7 @@ mod tests {
         let mut bhat = Vec::with_capacity(N);
         for i in 0..N {
             let pair = [seed(2 * i as u64), seed(2 * i as u64 + 1)];
-            let b = (i % 3 == 0) as u8; // server's OT choice bits
+            let b = u8::from(i % 3 == 0); // server's OT choice bits
             r_seeds.push(pair);
             r_s.push(RsEntry {
                 b,
