@@ -48,6 +48,9 @@ See [`pool-psi-cli`](pool-psi-cli/README.md) to run client and server separately
 
 ## Security
 
+Semi-honest only: the protocol is secure against passive adversaries that follow
+it, but a malicious party that deviates can break it.
+
 Research code. Not audited, and not safe for production until it is.
 
 ## Roadmap
