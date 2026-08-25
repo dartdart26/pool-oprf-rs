@@ -107,7 +107,7 @@ pub(crate) fn inner_product(v: &ZqVector, sk: &SecretKey) -> Zq {
     let sum: ZqAccum =
         v.0.iter()
             .zip(&sk.0)
-            .map(|(&vi, &si)| vi as ZqAccum * si as ZqAccum)
+            .map(|(&vi, &si)| ZqAccum::from(vi) * ZqAccum::from(si))
             .sum();
     reduce_q(sum)
 }

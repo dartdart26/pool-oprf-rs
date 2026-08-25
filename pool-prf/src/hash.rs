@@ -52,8 +52,8 @@ pub fn hash_to_zq_matrix(tag: &[u8], input: &[u8]) -> ZqMatrix {
         let mut vec = [0 as Zq; N];
         let offset = row * N * 2;
         for i in 0..N {
-            let lo = buf[offset + 2 * i] as Zq;
-            let hi = buf[offset + 2 * i + 1] as Zq;
+            let lo = Zq::from(buf[offset + 2 * i]);
+            let hi = Zq::from(buf[offset + 2 * i + 1]);
             vec[i] = reduce_q(lo | (hi << 8));
         }
         ZqVector(vec)
