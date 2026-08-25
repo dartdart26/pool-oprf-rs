@@ -9,14 +9,13 @@ use rand::{SeedableRng, rngs::StdRng};
 const TAG: &[u8] = b"tag-1";
 
 /// Both halves of a run, from a fresh local connection.
-async fn setup(set_size: usize, seed: u64) -> (PsiClient, PsiSession, SecretKey) {
+async fn setup(set_size: usize, seed: u64) -> (PsiClient, PsiSession) {
     let (server_conn, client_conn) = cryprot_net::testing::local_conn().await.unwrap();
     let (mut client_rng, mut server_rng) = (
         StdRng::seed_from_u64(seed),
         StdRng::seed_from_u64(seed + 1000),
     );
-    let sk = SecretKey::random(&mut server_rng);
-    let server = PsiServer::new(sk.clone());
+    let server = PsiServer::new(SecretKey::random(&mut server_rng));
 
     let (client, session) = tokio::try_join!(
         PsiClient::new(client_conn, set_size, &mut client_rng),
@@ -24,7 +23,7 @@ async fn setup(set_size: usize, seed: u64) -> (PsiClient, PsiSession, SecretKey)
     )
     .unwrap();
 
-    (client, session, sk)
+    (client, session)
 }
 
 #[tokio::test]
@@ -32,13 +31,13 @@ async fn client_learns_the_intersection() {
     let client_set: [&[u8]; 4] = [b"alice", b"bob", b"carol", b"dave"];
     let server_set: [&[u8]; 3] = [b"bob", b"dave", b"erin"];
 
-    let (client, mut session, sk) = setup(client_set.len(), 1).await;
+    let (client, mut session) = setup(client_set.len(), 1).await;
     assert_eq!(session.set_size(), client_set.len());
     assert_eq!(client.uid(), session.uid());
 
     let (indices, ()) = tokio::try_join!(
         client.intersect(&client_set),
-        session.serve(&sk, TAG, &server_set),
+        session.serve(TAG, &server_set),
     )
     .unwrap();
 
@@ -53,10 +52,10 @@ async fn disjoint_sets_intersect_to_nothing() {
     let client_set: [&[u8]; 2] = [b"alice", b"carol"];
     let server_set: [&[u8]; 2] = [b"bob", b"dave"];
 
-    let (client, mut session, sk) = setup(client_set.len(), 2).await;
+    let (client, mut session) = setup(client_set.len(), 2).await;
     let (indices, ()) = tokio::try_join!(
         client.intersect(&client_set),
-        session.serve(&sk, TAG, &server_set),
+        session.serve(TAG, &server_set),
     )
     .unwrap();
 
@@ -147,7 +146,7 @@ async fn a_finished_session_leaves_the_others_alone() {
 
 #[tokio::test]
 async fn a_set_of_the_wrong_size_is_rejected() {
-    let (client, _session, _sk) = setup(3, 5).await;
+    let (client, _session) = setup(3, 5).await;
 
     let too_many: [&[u8]; 4] = [b"a", b"b", b"c", b"d"];
     let err = client.intersect(&too_many).await.unwrap_err();
