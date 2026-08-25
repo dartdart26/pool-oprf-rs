@@ -31,15 +31,17 @@ The paper's Table 3 row for 128-bit semi-honest security, in
 
 ```
 cargo test --workspace      # tests
-cargo bench -p pool-oprf    # benchmarks
+cargo bench --workspace     # benchmarks
 ./pool-psi-cli/demo.sh      # a demo of the PSI client and server over the network
 ```
 
-Preprocessing uses IKNP OT extension by default. The `silent-ot` feature on
-`pool-oprf` swaps in silent OT:
+Preprocessing uses IKNP OT extension by default. The `silent-ot` feature swaps
+in silent OT.
 
 ```
-cargo test -p pool-oprf --features silent-ot
+cargo test --workspace --features silent-ot
+cargo bench --workspace --features silent-ot
+./pool-psi-cli/demo.sh --silent-ot
 ```
 
 See [`pool-psi-cli`](pool-psi-cli/README.md) to run client and server separately.
