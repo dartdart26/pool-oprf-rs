@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Nothing here writes to the repo.
+permissions:
+  contents: read
+
+# A new push to a PR cancels the run still going for the previous one. Runs on
+# main are never cancelled, so every commit there keeps its own verdict.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTDOCFLAGS: -D warnings --cfg s2n_quic_enable_pq_tls
+
+jobs:
+  lint:
+    name: lint (${{ matrix.ot }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ot: iknp
+            features: ""
+          - ot: silent-ot
+            features: --features silent-ot
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: lint-${{ matrix.ot }}
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --locked --workspace --all-targets ${{ matrix.features }} -- -D warnings
+
+      - name: cargo doc
+        run: cargo doc --locked --workspace --no-deps ${{ matrix.features }}
+
+  test:
+    name: test (${{ matrix.ot }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ot: iknp
+            features: ""
+          - ot: silent-ot
+            features: --features silent-ot
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: test-${{ matrix.ot }}
+
+      - name: cargo test
+        run: cargo test --locked --workspace ${{ matrix.features }}
+
+      - name: build benches
+        run: cargo build --locked --workspace --benches ${{ matrix.features }}
+
+  demo:
+    name: demo (${{ matrix.ot }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ot: iknp
+            flag: ""
+          - ot: silent-ot
+            flag: --silent-ot
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: demo-${{ matrix.ot }}
+
+      - name: run demo
+        run: ./pool-psi-cli/demo.sh ${{ matrix.flag }}
+
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [lint, test, demo]
+    if: always()
+    steps:
+      - name: report
+        run: |
+          echo "lint: ${{ needs.lint.result }}"
+          echo "test: ${{ needs.test.result }}"
+          echo "demo: ${{ needs.demo.result }}"
+      - name: fail if any job did not succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1
