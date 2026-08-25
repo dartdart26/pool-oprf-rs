@@ -5,6 +5,9 @@ edition = "2024"
 description = "Private Set Intersection built on the Pool OPRF"
 license = "MIT"
 
+[features]
+silent-ot = ["pool-oprf/silent-ot"]
+
 [dependencies]
 pool-prf = { workspace = true }
 pool-oprf = { workspace = true }
