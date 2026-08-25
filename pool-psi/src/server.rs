@@ -86,13 +86,8 @@ impl PsiSession {
     /// Convenience for a server that has one client, or one whose set changes
     /// per client; anything else should [`PsiServer::mask`] once per tag and
     /// reuse the result across sessions.
-    pub async fn serve<T: AsRef<[u8]>>(
-        &mut self,
-        sk: &SecretKey,
-        tag: &[u8],
-        set: &[T],
-    ) -> Result<(), PsiError> {
-        let masked = mask_server_set(sk, tag, set);
+    pub async fn serve<T: AsRef<[u8]>>(&mut self, tag: &[u8], set: &[T]) -> Result<(), PsiError> {
+        let masked = mask_server_set(self.oprf.key(), tag, set);
         self.serve_masked(tag, &masked).await
     }
 
@@ -133,6 +128,10 @@ impl PsiSession {
         }
 
         Ok(())
+    }
+
+    pub fn key(&self) -> &SecretKey {
+        self.oprf.key()
     }
 
     /// How many elements this session was preprocessed for.

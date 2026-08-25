@@ -112,6 +112,10 @@ impl OprfSession {
     pub fn uid(&self) -> &Uid {
         self.state.uid()
     }
+
+    pub fn key(&self) -> &SecretKey {
+        &self.sk
+    }
 }
 
 #[cfg(test)]
