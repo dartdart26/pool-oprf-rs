@@ -20,5 +20,5 @@ s2n-tls = { workspace = true }
 tokio = { workspace = true }
 zeroize = { workspace = true }
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(s2n_quic_enable_pq_tls)'] }
+[lints]
+workspace = true

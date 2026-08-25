@@ -24,3 +24,6 @@ tracing = { workspace = true }
 cryprot-net = { workspace = true, features = ["__testing"] }
 cryprot-core = { workspace = true, features = ["__testing"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

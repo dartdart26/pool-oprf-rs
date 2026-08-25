@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde::de::{self, Deserializer};
 use serde::ser::Serializer;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 /// Secret key for the LWR-based PRF: a binary vector of length N.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
@@ -21,11 +21,13 @@ impl Serialize for SecretKey {
 
 impl<'de> Deserialize<'de> for SecretKey {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
-        let bits: [u8; N] = bytes.try_into().map_err(|bytes: Vec<u8>| {
-            de::Error::custom(format!("expected {} bytes, got {}", N, bytes.len()))
-        })?;
-        SecretKey::from_bits(bits).ok_or_else(|| de::Error::custom("key bytes must be 0 or 1"))
+        // Both intermediates hold raw key material, so they zeroize on drop.
+        let bytes = Zeroizing::new(Vec::<u8>::deserialize(deserializer)?);
+        let bits =
+            Zeroizing::new(<[u8; N]>::try_from(&bytes[..]).map_err(|_| {
+                de::Error::custom(format!("expected {N} bytes, got {}", bytes.len()))
+            })?);
+        SecretKey::from_bits(*bits).ok_or_else(|| de::Error::custom("key bytes must be 0 or 1"))
     }
 }
 
