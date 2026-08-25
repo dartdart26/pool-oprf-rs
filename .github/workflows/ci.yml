@@ -19,6 +19,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  RAYON_NUM_THREADS: 16
   RUSTDOCFLAGS: -D warnings --cfg s2n_quic_enable_pq_tls
 
 jobs:
