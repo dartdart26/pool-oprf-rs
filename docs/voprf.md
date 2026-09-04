@@ -104,6 +104,42 @@ proof will see it:
 
 ## 3. What has to be proven
 
+### 3.0 In plain language
+
+The client sends blinded numbers, gets back `Δ = 16` numbers `y_0..y_15`,
+and unblinds exactly one of them. For that output to be right the server must
+have done three things honestly, and the proof pins down exactly those:
+
+1. **"I used the key in `pk`."** The key bits in the computation are the ones
+   committed in the public key. Same key for every client and every query.
+2. **"For each coordinate I used the mask *you* sent me, at the position my
+   key bit points to."** In preprocessing the client hands the server two
+   sealed envelopes per coordinate (the two OT seeds); the server opens one,
+   and which one is tied to its key bit (`b̄_i ⊕ sk_i`). The client knows the
+   contents of both envelopes but not which was opened. So the client
+   publishes a hash of each envelope's content, and the server proves that
+   the mask it used came from the envelope whose hash sits at the index its
+   committed key bit selects. This is the crucial part: without it the server
+   could plug in any mask and make the answer anything.
+3. **"I padded the 16 answers with pads I committed to before seeing your
+   request."** The client knows exactly one of the 16 pads (its OT output)
+   and must never learn the others. The server commits to all 16 per slot in
+   preprocessing; the client checks its own; the proof shows every `y_j` used
+   the committed pad, so the one entry the client unblinds used the pad the
+   client holds.
+
+In between, the proof just says "I did the formula": sum the masked values
+mod `q`, round to `Z_p`, add the pad mod `p`. That part is cheap.
+
+Not proven: anything the client does itself (hashing `x`, blinding,
+unblinding), and honesty of the OT. The client checks against the envelopes it
+sent and the pad it received, so the OT only matters for privacy, as today.
+
+The proof must be zero-knowledge because it must hide the key bits and the
+other 15 pads: an unpadded neighbour of the client's entry reveals where the
+rounding flips, a low bit of the unrounded inner product, and enough of those
+give the key (Section 4).
+
 ### 3.1 The obstacle that shapes the statement
 
 In algebraic VOPRFs (2HashDH, Albrecht–Gür) the server's response is an
@@ -340,9 +376,11 @@ a client.
   construction; the arithmetic overhead is roughly `1 + 4/(3·log|H|)`, i.e. a
   few percent.
 - **Plonky3** (Rust; Mersenne31, BabyBear, KoalaBear, Goldilocks; Poseidon2,
-  Rescue, Monolith, BLAKE3 hashes): the README says nothing about ZK; a search
-  turns up claims of "full ZK support" but I could not confirm a ZK flag in the
-  code from here. **Must be checked before relying on it.**
+  Rescue, Monolith, BLAKE3 hashes): has a zero-knowledge mode. The `uni-stark`
+  prover checks `config.is_zk()`, extends the trace domain with random rows,
+  and commits to a randomization polynomial through the PCS
+  (`get_opt_randomization_poly_commitment`). Still worth an audit against
+  Haböck–Al Kindi before relying on it, but the machinery is there.
 - **Winterfell** (Rust, Meta): documented as *not* zero-knowledge.
 - **RISC Zero**: zkVM, ZK STARK receipts; simplest engineering (write the
   checker in Rust) but a general zkVM is 10–100x slower than a hand-written
@@ -384,9 +422,9 @@ evaluation for our statement. Not suitable.
 
 ### 6.6 Recommendation
 
-1. **Primary: a hash-based STARK with zero-knowledge** (Plonky3 if its ZK mode
-   checks out, otherwise RISC Zero for a first prototype), Poseidon2 for all
-   commitments and for `Expand`. Reasons: Rust, fits the workspace, native
+1. **Primary: Plonky3 in ZK mode**, a hand-written AIR for `R_row`, Poseidon2
+   over a 31-bit field (KoalaBear or BabyBear) for all commitments and for
+   `Expand`. RISC Zero only as a throwaway prototype of the checker. Reasons: Rust, fits the workspace, native
    support for the hash we need in-circuit, no new assumptions beyond hashes
    (the PRF itself is LWR, but the *proof* adding no lattice-parameter
    choices is a plus), batching is natural, and there is a documented recipe
