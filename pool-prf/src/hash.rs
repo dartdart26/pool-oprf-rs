@@ -1,7 +1,7 @@
 use crate::modular::reduce_q;
 use crate::params::{H_ROWS, N, Zq};
 
-/// A vector of `N` elements in Zq (one row of the hash matrix).
+/// A vector of `N` elements in ℤ_q (one row of the hash matrix).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZqVector(pub(crate) [Zq; N]);
 
@@ -11,7 +11,7 @@ impl ZqVector {
     }
 }
 
-/// A matrix of `H_ROWS` x `N` elements in Zq, produced by hashing an input.
+/// A matrix of `H_ROWS` × `N` elements in ℤ_q, produced by hashing an input.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZqMatrix(pub(crate) [ZqVector; H_ROWS]);
 
@@ -24,7 +24,7 @@ impl ZqMatrix {
 /// Domain separator for the random oracle.
 const RO_DOMAIN_SEPARATOR: &str = "pool-oprf v1 random oracle to zq matrix";
 
-/// Hash a tag and an input to a matrix in Zq^{H_ROWS x N} using BLAKE3 in XOF
+/// Hash a tag and an input to a matrix in ℤ_q^{H_ROWS × N} using BLAKE3 in XOF
 /// mode. This is `RO(t, x)` from Figure 4.
 ///
 /// `tag` is the public input of the partial OPRF - the server sees it, unlike

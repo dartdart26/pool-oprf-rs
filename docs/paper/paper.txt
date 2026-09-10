@@ -1,0 +1,1439 @@
+ Pool: A Practical OT-based OPRF from Learning with Rounding
+                   Alex Davidson                                   Amit Deo                                  Louis Tremblay Thibault
+         LASIGE, Faculdade de Ciências,                              Zama                                                Zama
+            Universidade de Lisboa                               Paris, France                                        Paris, France
+               Lisbon, Portugal                                amit.deo@zama.ai                             École de technologie supérieure
+             aadavidson@fc.ul.pt                                                                                    Montréal, Canada
+                                                                                                            louis.tremblay.thibault@zama.ai
+
+ABSTRACT                                                                      a hundred bytes, questions have arisen around the feasibility of
+We propose Pool: a conceptually simple post-quantum (PQ) oblivi-              developing post-quantum (PQ) variants of such protocols. In par-
+ous pseudorandom function (OPRF) protocol, that is round-optimal              ticular, while 2HashDH involves a client request that is perfectly
+(with input-independent preprocessing), practically efficient, and            private, the server key is subject to quantum adversaries that could
+has security based on the well-understood hardness of the learn-              invert discrete-log relations, that would ultimately violate the pseu-
+ing with rounding (LWR) problem. Specifically, our design permits             dorandomness property of said construction. Various constructions
+oblivious computation of the LWR-based pseudorandom function                  have arisen from lattice-based assumptions [5, 6, 50, 55], isoge-
+𝐹 sk (𝑥) = ⌈𝐻 (𝑥) ⊤ · sk⌋𝑞,𝑝 , for random oracle 𝐻 : {0, 1}∗ ↦→ Z𝑞𝑛 and       nies [15, 17, 26], and more heuristic constructions based on low-
+uniformly chosen sk ∈ {0, 1}𝑛 . For 128-bits of semi-honest security,         depth [2, 4, 49] and Legendre-based PRFs [21, 75].
+the Pool OPRF has an online communication cost of 11.9 kB, and a                 Considerable effort has been poured into developing PQ (and
+computational runtime of less than 2 ms on a single thread (via an            plausibly PQ) OPRF constructions that attempt to match the practi-
+open-source software implementation). This is more efficient (in              cality of 2HashDH, but a sizable gap remains. Table 1 summarizes
+either online communication cost or runtime) than constructions               the state-of-the-art, reporting the performance characteristics of
+from well-known PQ PRFs, and is competitive even with construc-               existing constructions in a semi-honest setting, where adversaries
+tions that only conjecture PQ security on lesser-known assumptions.           attempt to subvert privacy within the confines of the protocol de-
+As a result, our design gives high-performance, post-quantum vari-            scription. We elaborate more on related work in Section 1.2. As a
+ants of established OPRF applications in multi-party computation              synopsis, current constructions either: (i) are based on novel as-
+and private set operation protocols.                                          sumptions or are subject to active cryptanalysis, (ii) have stringent
+                                                                              parameter requirements leading to large bandwidth costs, (iii) do
+1     INTRODUCTION                                                            not have concrete implementations exhibiting practical computa-
+                                                                              tional performance; or (iv) are not round optimal (i.e. more than
+Oblivious pseudorandom function (OPRF) protocols [51, 60] permit              two messages are transferred between client and server for OPRF
+a client to receive PRF evaluations 𝐹𝑘 (𝑥) on inputs 𝑥 ∈ {0, 1}ℓ of           evaluation). This situation naturally asks whether it is possible
+their choice, from a server holding the PRF key 𝑘 ←$ {0, 1}𝜆 . The            to construct round-optimal OPRF protocols from well-understood
+key security property of such protocols is that the server learns             PRFs, while achieving credible performance for real-world applica-
+nothing of the input 𝑥, and that the client learns 𝐹𝑘 (𝑥) without             tions.
+compromising the pseudorandomness of the function 𝐹𝑘 (·), from
+                                                                              Our work. We construct Pool, a round-optimal2 OPRF, based on
+the client’s perspective.
+                                                                              the security of the well-understood Learning With Rounding (LWR)
+   Over the last decade or so, OPRFs have come to form the bedrock
+                                                                              assumption [14]. This assumption, and natural algebraic variants
+of a large swathe of interesting cryptographic applications. In
+                                                                              of it, were prominently used by constructions in the NIST PQC
+particular, they are a core primitive in protocols for computing
+                                                                              standardization call [10, 11, 20, 39, 43]. The underlying form of
+private set operations (PSOs, e.g. [61, 62, 72]), private aggrega-
+                                                                              the PRF considers a secret key k ←$ {0, 1}𝑛 and a random oracle
+tion procedures (e.g. [46, 63]), and compromised credential check-
+                                                                              𝐻 , and the function itself is defined as 𝐹 k (𝑥) = ⌈ 𝑞 ⟨a, k⟩⌋, where
+                                                                                                                                    𝑝
+ing mechanisms [64]. In terms of real-world deployments, the
+IETF standardization [44] of the (group-based) 2HashDH-based                  a = 𝐻 (𝑥) ∈ Z𝑞 . This form of PRF was first explicitly introduced
+                                                                                              𝑛
+
+OPRF [57] has been instrumental in permitting further standard-               in [27] and recently used in [48], with security following from
+ization efforts for protocols that handle privacy-preserving access           the binary-secret LWR assumption. We discuss existing security
+token issuance [37, 45] and password-authenticated key exchange               reductions and the hardness of LWR further in Section 2.2.
+(PAKE) [28, 59] in the Internet setting. In particular, such efforts             Pool is very simple (see the technical overview in Section 1.1)
+have seen such protocols developed and run at global-scale, for               and supports adding metadata (partial obliviousness), which is im-
+enhancing the privacy of Internet users (for instance, the company            portant for several applications [44]. In the preprocessing phase, we
+Cloudflare handles millions of OPRF evaluations per minute [67]).             require 𝑛 1-out-of-2 oblivious transfer (OT) protocols, and a single
+In summary, OPRFs are a core cryptographic tool that underpin the             1-out-of-Δ OT (where Δ = 𝑞/𝑝) — both of which must satisfy PQ
+privacy of today’s communication infrastructure.                              security. This can be done by using a PQ base OT construction, such
+   With the success of the classical 2HashDH construction,1 which             as KyberOT [66]. In the online phase, all operations are essentially
+can perform evaluations in less than a millisecond and in less than           modular operations over Z𝑞 , Z𝑝 and ZΔ . The security proof of Pool
+
+1 As well as related constructions, such as [74].                             2 After input-independent preprocessing.
+
+                                                                          1
+                                                                                                            Alex Davidson, Amit Deo, and Louis Tremblay Thibault
+
+
+requires formally defining preprocessing adaptations (Section 3) to            sampled uniformly from the integers modulo 𝑚, Z𝑚 . Further, for any
+the POPRIV and PPOPRF security games that have been used in                    strictly positive integer 𝑛, we define [𝑛] := {1, 2, . . . , 𝑛 − 1, 𝑛} and
+prior work [4, 50, 74]. Such models had previously gone undefined,             for integers 𝑛 2 > 𝑛 1 , we define [𝑛 1, 𝑛 2 ] = {𝑛 1, 𝑛 1 + 1, . . . , 𝑛 2 − 1, 𝑛 2 }.
+despite several constructions and various applications (e.g., in the           For 𝑥 ∈ Z𝑞 , we write ⌈𝑥⌋𝑞,𝑝 to indicate rounding (𝑝/𝑞) · 𝑥 to the
+design of PSOs and PAKEs) aiming for said functionality. Our ab-               nearest integer (rounding down in the case of a tie). When we refer
+straction allows the formal usage of preprocessing-based OPRFs as              to a number of “rounds” in a protocol, we mean the total number
+black-boxes in higher-level primitives.                                        of messages in a transcript.
+   To measure efficiency, we implement Pool using libOTe to instan-            Initial construction. Denote (𝑎 1, . . . , 𝑎𝑛 ) = 𝐻 (𝑥), where 𝐻 :
+tiate the OT functionalities [71] and compare it against state-of-the-         {0, 1}ℓ ↦→ Z𝑞𝑛 is modeled as a random oracle, and 𝑥 ∈ {0, 1}ℓ is the
+art designs, such as Leap [55] (see Section 6.2). For a 128-bit security       client input in the OPRF. Further, let s = (𝑠 1, . . . , 𝑠𝑛 ) ∈ {0, 1}𝑛 be a
+parameter and output length (LWR parameters of 𝑞 = 212 , 𝑝 = 28 ,              binary LWR secret key owned by the server.
+and 𝑛 = 482), we achieve online bandwidth of 11.9 kB, server run-
+                                                                                     Step 1: For 𝑖 = 1 . . . 𝑛, the client plays the role of 21 -OT
+                                                                                                                                                              
+times of 0.6 ms, and client runtimes of 1 ms; either outperforming or
+                                                                                        sender with (𝑟𝑖 , 𝑎𝑖 + 𝑟𝑖 ), for some random mask 𝑟𝑖 ←$ Z𝑞 ,
+competitive with prior works. This includes those based on newer,                                                              
+less well-understood assumptions (where recent cryptanalysis ap-                        and the server plays the role of 21 -OT receiver, with choice
+plies). Compared with constructions based on well-known lattice                         bit 𝑠𝑖 . As a result, the server receives 𝑎𝑖 · 𝑠 + 𝑟𝑖 .
+assumptions (e.g. [5, 6]), we are the first to provide any concrete                  Step 2: The server adds all of the vectors it received to obtain
+                                                                                        𝑐 = a⊤ s + 𝑟 Σ where 𝑟 Σ = 𝑖 ∈ [𝑛] 𝑟𝑖 .
+                                                                                                                     Í
+measure of efficiency. As a result, we believe Pool is a strong candi-
+date for building secure and practical PQ OPRFs, with relevance to                   Step 3: Client plays a 1 -OT receiver with choice 𝑟 Σ ∈ Z𝑞
+                                                                                                                 𝑞
+
+various Internet-based applications and standardization efforts.                        and server plays the sender with elements
+Contributions. The formal contributions of this work follow.                                 (⌈𝑐 − 0⌋𝑞,𝑝 , ⌈𝑐 − 1⌋𝑞,𝑝 , . . . , ⌈𝑐 − (𝑞 − 1)⌋𝑞,𝑝 ).
+      • A simple, online round-optimal OPRF protocol, named Pool                  The client, therefore, receives ⌈𝑐 − 𝑟 Σ ⌋𝑞,𝑝 = ⌈a⊤ s⌋𝑞,𝑝 , which is
+         (Section 4), for evaluating the PRF 𝐹 k (s) defined above,            the correct PRF output. We note that the techniques used above
+         where 𝐹 : Z𝑞𝑛 × Z𝑛2 ↦→ Z𝑝 , for 𝑝 |𝑞, and 𝑛, 𝑞 chosen such that       bear resemblance to those used in the Leap OPRF [55]. Client pri-
+         the LWR assumption holds.                                             vacy is maintained via the functionality of OT and the uniformity
+      • Formal security analysis of Pool (Section 5), in a newly               of the blinding factors 𝑟𝑖 . For server security, the OT in step 3 guar-
+         adapted variant of the game-based security model of [74],             antees that the client learns the PRF output, and nothing more. To
+         for handling semi-honest adversaries and preprocessing.               instantiate 𝑞1 -OT, we can use [61] or [69] and use IKNP [56] or
+         Our definition (Section 3) separates the preprocessing phase                                                                 
+                                                                               Silent OT [29] for the base OT extension of the 21 -OT, where the
+         explicitly from the online phase, leading to a clear on-              PQ base OT is implemented using KyberOT [66]. Concretely, we
+         line/offline separation in the construction and proof.                can set 𝑛 and (𝑝, 𝑞) to ensure that the LWR PRF is secure using the
+      • An implementation3 and experimental analysis (Section 6)               well-known Lattice Estimator [7]4 .
+         demonstrating the practical efficiency of Pool.
+                                                                                   Number of Rounds. Steps 1 and 3 both use OT and may be aided
+1.1     Technical Overview                                                     by preprocessing. Using OT preprocessing, a single online OT inter-
+                                                                               action usually takes two rounds of communication [19]. However,
+We start by giving an overview of a basic construction that can                if the choice bits of the receiver are known during the preprocess-
+be instantiated directly from OT, and OT extension [56]. Briefly,              ing phase, only one round of communication is required. Luckily,
+1-out-of-𝑁 OT allows a receiver to obtain 1 out of 𝑁 strings picked            the server can know its choice bits (i.e. its secret key) during the
+by a sender. Crucially, the sender does not learn which string the             preprocessing phase, so step 1 is a single round of communication
+receiver obtained, while the receiver does not gain any information            from client to server. On the other hand, step 3 costs two online
+on the remaining 𝑁 − 1 strings. We explain the protocol in full,               rounds as the client’s choice bits cannot be known during the pre-
+and then explain various optimizations that allow us to split the              processing phase in a normal application. Therefore step 3 consists
+exchange into a very efficient online phase (the most expensive                of a message from client to server (a few correction bits), and a
+operations being Z𝑞 , Z𝑝 and ZΔ arithmetic), and a slower offline              response. However, the message from client to server can be sent
+preprocessing phase that includes Random OT (i.e. OT where the                 with the message from step 1, reducing communication to just two
+sent strings and receiver choice are uniformly distributed). We note           rounds in the online phase.
+throughout that we only target security against semi-honest adver-
+saries that corrupt either the client or the server, and only compare            Parameters. Suppose we want 128 bits of output. This requires
+with other solutions under this condition. In particular, semi-honest          generating 128/log(𝑝) output elements in parallel. The estimated
+adversaries respect the protocol description but attempt to subvert            communication cost for 128 bits of output is then
+the privacy of honest parties. We discuss protocol modifications                                                                 128
+that would achieve malicious security in Section 4.                                    ([2𝑛 log(𝑞) + log(𝑞)] + [𝑞 ∗ log(𝑝)]) ·        bits.  (1)
+                                                                                                                               log(𝑝)
+Notation. Let 𝜆 be the security parameters, respectively. We use               where the first square bracket is the client’s message and the second
+ 𝑁
+ 1 -OT to refer to 1-out-of-𝑁 OT. We write 𝑧 ←$ Z𝑚 to say that 𝑧 is            square bracket is the server message. Example parameters for 100
+3 https://github.com/tremblaythibaultl/ot-pq-oprf                              4 https://github.com/malb/lattice-estimator
+
+                                                                           2
+Pool: A Practical OT-based OPRF from Learning with Rounding
+
+
+
+                Construction            Assumption                                    Online Rounds        Preprocessing        Online comms.         Output bits
+                           [49]         Alternating Moduli [25]                                       2           ✓                        80B†                 128
+                            [2]         Alternating Moduli [2]                                        2           ✓                      114.5B†                128
+                      Leap [55]         Spring-BCH PRF [12]                                           3           ✓                        23KB                  64
+                             Pool       Binary LWR (100 bits sec.)                                    2           ✓                        9.2KB                128
+                             Pool       Binary LWR (128 bits sec.)                                    2           ✓                       11.9KB                128
+
+Table 1: Brief comparison of Pool with existing semi-honest OPRF constructions believed to resist quantum attacks, and for
+security levels of 100 bits, or higher. † Communication value corresponds to a batched evaluation setting, where costs of a single
+query are amortized over the total batch size. We note that while we can offer well-grounded security estimates for Pool, prior
+constructions are based on assumptions/parameters that have not been well-studied, and thus security guarantees are not
+stable (see Section 1.2 for more details). We provide a comparison with maliciously-secure protocols in Appendix A.
+
+
+
+bits of security from the lattice estimator are 𝑛 = 370, 𝑝 = 28, 𝑞 =                                 The server can then either unmask the first value (if sk𝑖 = 0), or
+212 , leading to an estimated 83 kB online cost.                                                     the second (if sk𝑖 = 1) to obtain 𝑎˜𝑖 = 𝑎𝑖 𝑠𝑖 + 𝑟𝑖 .
+Reducing the size of Step 3. As an optimization, we can exploit                                         Instead of sending (𝑟𝑖 + 𝑟 0,𝑖 , 𝑎𝑖 + 𝑟𝑖 + 𝑟 1,𝑖 ), the client can just send
+the highly structured form of the length-𝑞 vector computed by the                                    𝑎𝑖 + 𝑟 0,𝑖 + 𝑟 1,𝑖 . If sk𝑖 = 0, the server knows 𝑟 0,𝑖 , whereas if sk𝑖 = 1
+server in step 3. This vector is simply a cyclic shift of the vector                                 the server can unmask to learn 𝑎𝑖 + 𝑟 0,𝑖 . In essence, 𝑟 0,𝑖 takes the
+                                        Δ times Δ times                     Δ times
+                                                                                                     place of the mask 𝑟𝑖 . The cost then reduces considerably to:
+                                    z }| { z }| {                       z      }|         {
+ (⌈0⌋𝑞,𝑝 , . . . , ⌈𝑞 − 1⌋𝑞,𝑝 ) = ( 0, . . . , 0, 1, . . . , 1, . . . , 𝑝 − 1, . . . , 𝑝 − 1),                                                                128
+                                                                                                               ([𝑛 log(𝑞) + log(Δ)] + [Δ · log(𝑝)]) ·              bits.        (2)
+                                                                                                                                                            log(𝑝)
+where each block of repeated elements has length Δ := 𝑞/𝑝. It
+follows that the vector computed by the server is fully determined                                   Using the aforementioned parameters, the concrete online cost
+by its first Δ elements. Therefore, it is enough for the client to learn                             therefore decreases to just over 9 kB. Our full protocol, including
+the index 𝑟 Σ mod Δ, and then infer the value at index 𝑟 Σ . This can                                each of the tweaks and optimizations detailed here, is described
+be done by using the fact that entries of the length-𝑞 vector that are                               in Figure 4.
+𝑘 · Δ apart differ in value by 𝑘 mod 𝑝. Note that learning the value                                 Proving security. From a security perspective, our OPRF construc-
+of the database at index 𝑟 Σ mod Δ leaks no more information that                                    tion is split between a preprocessing step containing Random OT
+directly learning the value at index 𝑟 Σ due to the aforementioned                                   invocations, and an online step involving various masked messages.
+structure. With this in mind, we can amend Step 3 to take the form:                                  A natural, and seemingly benign, question is, what security model
+      Step 3: The client plays Δ1 -OT receiver with choice element
+                                         
+                                                                                                     should we use? Unfortunately, models that support a preprocessing
+          𝑟 Σ mod Δ and the server plays the sender with elements                                    phase are not formally defined in previous works. In particular,
+          ( ⌈𝑐 − 0⌋𝑞,𝑝 , ⌈𝑐 − 1⌋𝑞,𝑝 , . . . , ⌈𝑐 − (Δ − 1)⌋𝑞,𝑝 ).                                    OPRF constructions normally use security notions that are either
+Writing 𝑟 Σ = Δ · 𝑘 + (𝑟 Σ mod Δ), this results in the client receiving                              game-based ([4, 5, 45, 74]), presented in the universal composability
+𝑦 = ⌈𝑐 − (𝑟 Σ − Δ · 𝑘)⌋𝑞,𝑝 = ⌈a⊤ s⌋𝑞,𝑝 + 𝑘. Therefore, the client                                    model ([21, 55, 57]), or are left formally undefined ([2, 49]).
+can output 𝑦 − 𝑘 mod 𝑝 as its final output. With this change, the                                       We address this gap by formally specifying a game-based secu-
+estimated communication cost for 128 bits of output decreases to:                                    rity notion that allows embedding a preprocessing phase into the
+                                                            128                                      exchange, based on the PPOPRF and POPRIV1 security notions
+          ( [2𝑛 log(𝑞) + log(Δ)] + [Δ · log(𝑝)]) ·                bits.                              defined in [74]. We also introduce a parameter 𝜏 that dictates how
+                                                          log(𝑝)
+                                                                                                     many OPRF evaluations a single preprocessing run should facilitate.
+by replacing 𝑞 by Δ in step 3. Using the same example parameters                                     In the case of PPOPRF, we define SH-PPOPRF (Figure 1) requiring
+as previously, we therefore obtain an online communication cost                                      the existence of a simulator that simulates the view of a semi-honest
+of around 18 kB.                                                                                     client interacting with both the preprocessing and online phases.
+Reducing client online message. We now discuss the prepro-                                           Importantly, the simulator does not possess any server secret key,
+cessing/online phases of the protocol (as described up to this point)                                and only uses an appropriate number of PRF values during the
+in slightly more detail. Overall, the client and server perform ran-                                 simulation. This number is limited to one per client online OPRF
+dom 𝑛 21 -OTs (client as sender) and one Δ1 -OT (server as sender)
+                                                      
+                                                                                                     request, and 𝜏 per individual (simulated) preprocessing output state.
+in the preprocessing phase to learn a sequence of masks. The server                                  In the case of POPRIV1, we also amend the original definition to also
+                                                    
+then sends their OT inputs for the 𝑛 21 -OTs but shifted by their                                    provide explicit oracle access to a preprocessing oracle PreProc.
+secret key, i.e. 𝑏¯𝑖 = 𝑏𝑖 ⊕ sk𝑖 . In the online phase, the client sends                              Ultimately, we obtain an easy-to-use game-based definition for
+the message (𝑟𝑖 + 𝑟 0,𝑖 , 𝑎𝑖 + 𝑟𝑖 + 𝑟 1,𝑖 ), where 𝑟𝑖 are ephemeral masks                            preprocessing OPRFs that are optimal in the online phase.
+sampled in the online phase, and the value of 𝑟𝑠𝑖 ,𝑖 is learned by the                                  With the given model, we describe our scheme and proof in an
+server in the preprocessing phase (whereas 𝑟 1−𝑠𝑖 ,𝑖 remains hidden).                                OT-hybrid model, where client and server has access to random
+                                                                                                 3
+                                                                                                                     Alex Davidson, Amit Deo, and Louis Tremblay Thibault
+
+
+idealized OT functionalities (see Appendix C). The proof against a                           only 23 kB of communication, and milliseconds of evaluation time,
+corrupted server (Theorem 5.3) holds unconditionally in the OT-                              to produce 64 bits of output. However, while the structural design of
+hybrid model, and the proof against a corrupted client (Theorem 5.2)                         the Spring-BCH design does have a security proof, the parametriza-
+additionally relies on the binary LWR assumption. We realize the                             tions are purposefully chosen for efficiency and do not satisfy the
+OT functionality and report on concrete performance in Section 6.                            requirements of the security proof. In order to justify parameter
+Limitations. Our construction is only proven secure in the semi-                             choices, bespoke direct cryptanalysis is used on the PRF, rather
+honest security setting where clients and servers respect the proto-                         than on any single well-established lattice assumption. Given the
+col description. To upgrade to malicious client security, one could                          efficiency of Leap and the similarities with our design, we provide
+use maliciously secure OT primitives and add zero-knowledge                                  a detailed comparison of performance in Section 6.2.
+proofs and extractable commitments to the preprocessing and on-
+                                                                                             Isogeny-based. Since the initial construction of Boneh, Kogan,
+line phases of the OPRF. This is in line with previous maliciously-
+                                                                                             and Woo [26], various constructions have arisen from hardness
+secure constructions based on lattices [4, 5, 50, 55]. We discuss such
+                                                                                             assumptions constructed over isogenies [15, 17]. Furthermore, very
+changes more specifically in Section 4.
+                                                                                             recently, the CSIDH group has been used to build algebraic-like
+1.2     Related Work
+                                                                                             OPRFs [47]. Several attacks and insecurities have been found in
+                                                                                             some of these constructions, that have either completely broken
+We now summarize the various kinds of post-quantum OPRF con-                                 existing schemes [16] or resulted in defining more conservative
+structions. Note that classical/algebraic OPRFs were introduced                              (and less efficient) parameter choices [18]. In general, while commu-
+and built upon in [51, 60] for applications associated with private                          nication can match those of the most efficient lattice-based OPRFs,
+set operations. Subsequently, various constructions have arisen                              concrete implementations and runtimes are unknown.
+(e.g. [57, 58, 74]) giving rise to applications for anonymous cre-
+dentials [45], password-authenticated key exchange [59], privacy-                            From Legendre symbols. The work of [21] constructs a generic
+preserving data aggregation [46], private matching protocols [68],                           template for establishing 2HashDH-like [57] OPRF protocols, where
+amongst many other applications. With many such applications                                 the individual components can be instantiated with PQ components,
+having been deployed across the Internet, developing practical PQ                            to achieve post-quantum security. 2HashDH protocols construct
+alternatives has considerable importance. We encourage the reader                            outputs of the form: 𝐻 2 (𝑥, 𝐻 1 (𝑥)𝑘 ), where the client sends 𝐻 1 (𝑥)
+to refer to the excellent survey of [34] for more details.                                   blinded to the server (e.g. 𝑋 = 𝐻 1 (𝑥)𝑟 ) and the server computes
+Lattice-based. The work of [5] gave the first (round-optimal) PQ                             𝑌 = 𝑋 𝑘 for their key 𝑘. The client then computes 𝑍 = 𝑌 −𝑟 , which,
+OPRF construction from ideal lattices. Depending on the RLWE                                 assuming commutativity in the exponent, allows them to compute
+and Ring-SIS problems, it computes an OPRF of the form ⌈𝑎𝑥 ·𝑘⌋𝑞,𝑝 ,                          the final output of 𝐻 2 (𝑥, 𝑍 ). The original instantiation of 2HashDH
+for 𝑎𝑥 ∈ 𝑅 derived from the client input 𝑥 ∈ {0, 1}ℓ , the (short)                           is presented in a cyclic prime-order group, with 𝐻 1 and 𝐻 2 mod-
+server key 𝑘 ∈ 𝑅. The client request blinds 𝑎𝑥 and the response                              eled as random oracles, but [21] presents a generalized framework
+allows the client to compute 𝑎𝑥 · 𝑘 + 𝑒 before rounding to achieve                           based on a secure function evaluation (SFE) protocol for evaluating
+the PRF. In the end, the parameters are impractical due to using                             𝑓 (𝐻 1 (𝑥), 𝑘). The work demonstrates two potential constructions,
+super-polynomial noise flooding, and the usage of expensive zero-                            one based on Legendre symbols and oblivious transfer, and another
+knowledge proofs. Subsequent work [6] greatly improves on this                               based on block ciphers. The construction is based on Legendre
+design by adapting the PRF design and using Renyi divergence. An                             symbols, which have been used as a candidate PQ construction of
+estimated online bandwidth cost of 70 kB + 110 kB can be derived                             pseudorandom generators since an initial design of Damgård [42].
+from [6, Tab.2] (where the second summand represents the costs                               The SFE protocol for the Legendre symbol PRF can be built from
+of zero-knowledge proofs). The LeOPaRd construction takes an                                 PQ instantiations of VOLE. An open-source implementation is pro-
+alternative route to improving [5] using new variants of the module                          vided, that shows that the base online OPRF protocol (without
+LWE problem,5 improving on performance relative to [6], but with                             network delays etc.) evaluations takes just under 200 ms to execute,
+less well-understood security. None of these constructions have                              and with a communication cost of around 200 kB. The Gold OPRF
+implementations that evaluate their concrete runtimes.                                       construction [75] also uses Legendre symbols as a base OPRF, and
+   The very recent Leap construction [55] uses the lattice-based                             demonstrates a mechanism to perform evaluations based directly
+Spring-BCH PRF [12] (a Naor-Reingold-like product k0 · 𝑖=1      k𝑖𝑥𝑖 ,                       from OT. Their construction requires around 774 kB for a single
+                                                           Îℓ
+                                                                                             evaluation, but this can be amortized considerably (e.g. to only
+for key elements k𝑖 and input 𝑥 ∈ {0, 1}ℓ ), to build an OPRF. This
+                                                                                             100 B) in a batched evaluation setting.
+construction is similar to Pool, utilizing Random OT and mask-
+ing/unmasking to perform the evaluation. However, the preprocess-                            From low-depth weak PRFs. Recent studies determine that low-
+ing steps also utilize Oblivious Linear Evaluation (OLE) protocols.                          dimensional linear operations, followed by lifting and reducing val-
+The overall protocol (that is proven secure) contains six rounds,                            ues to different moduli, may give enough non-linearity to establish
+though it is noted that some of these rounds can be moved into a                             weak PRFs. For example, one of the “Dark Matter” PRF candidate
+preprocessing phase, to give just three online rounds. The OPRF                              constructions [25] evaluates (A·x mod 2) ·1𝑛 mod 3 for A ∈ Z𝑛×𝑚2
+has an open-source implementation6 and is very efficient, requiring                          a secret key, and x ∈ {0, 1}𝑚 a randomly sampled input. Various
+5 Enjoying reductions to MLWE-like problems by making idealized assumptions.                 other constructions have suggested paths forward for construct-
+6While Leap itself is proven secure in a malicious setting, the implementation is only       ing constant-depth PRFs from simple binary operations [1, 30].
+secure against semi-honest adversaries.                                                      However, cryptanalysis has broken some constructions [24], or
+                                                                                         4
+Pool: A Practical OT-based OPRF from Learning with Rounding
+
+
+demonstrated weaknesses that imply revising parameters to be                       For a distribution 𝑋 , 𝑥 ←$ 𝑋 denotes sampling 𝑥 according to
+more conservative [38], but the example above remains unbroken.                𝑋 . Similarly, writing 𝑥 ←$ 𝑆 for a finite set 𝑆 denotes uniformly
+   With this in mind, various works have taken to using the Dark               sampling of 𝑥 from 𝑆. We use the notation that 𝑈 (𝑆) denotes the
+Matter PRF, and slight variants of it (so-called “Alternating Moduli”          uniform distribution over the set 𝑆. We say two distribution ensem-
+PRFs), as the basis for constructing plausibly PQ OPRFs. The work              bles (𝑋 (𝜆))𝜆 and (𝑌 (𝜆))𝜆 are computationally indistinguishable if
+of [4] constructs an OPRF protocol for evaluating the PRF above,               for all PPT algorithms A, | Pr𝑥←$𝑋 [A (𝑥) ⇒ 1] − Pr𝑥←$𝑌 [A (𝑥) ⇒
+that involves encrypting the client’s input 𝑥 with an FHE scheme,              1]| ≤ 𝜈 (𝜆) for some negligible function in 𝜆, 𝜈 (𝜆). We recall that
+and then having the server evaluate the circuit 𝐹 A (·) over this input,       the usual definition of a negligible function is any function that is
+and return the result to the client for decryption. Using TFHE [41],           𝜆 −𝜔 (1) where 𝜔 (·) is standard asymptotic notation. The notation
+the protocol incurs communication of less than 10 kB, but the re-              negl(𝜆) denotes an unspecified negligible function.
+quirement for bootstrapping enforces an expensive one-time cost                    We will be using the well-known random oracle model (ROM)
+of tens of megabytes, plus expensive runtimes. The works of [2, 49]            where random oracles will be realized using a suitable hash function.
+propose mechanisms based on OT for evaluating specific alternat-               Denoting an idealized random oracle RO, we have that on any input
+ing moduli PRFs. Both constructions are shown to be very efficient             𝑥, RO(𝑥) is distributed uniformly in the range of RO.
+for batched evaluations, incurring only around 100 B of (amortized)
+communication, and microseconds in runtime. However, recent
+cryptanalysis appears to show that the concrete security of these              2.1     Oblivious Transfer
+constructions is relatively unknown [9]. At the least, it is required          Random oblivious transfer (rOT) protocols over message-space M
+to set parameters more conservatively than the original work sug-              and choice-space Z𝛾 can be informally understood as protocols that
+gests, and the possibility of future, more systematic attacks remains.
+                                                                               securely realize the functionality 𝑓 (⊥, ⊥) = ((𝑏, 𝑟𝑏 ), (𝑟𝑖 )𝑖=0      Δ−1 ) where
+Furthermore, neither of [2, 49] provide explicit security proofs for
+                                                                               𝑏 ∈ Z𝛾 , 𝑟𝑖 ∈ M are all uniformly distributed. That is, on input ⊥
+their OPRF constructions. Finally, implementations are not pro-
+                                                                               from a receiver R and input ⊥ from a sender S, an rOT protocol aims
+vided open-source, and efficiency over non-batched evaluations is                                                            𝛾 −1
+not reported.                                                                  to provide S with uniform output (𝑟𝑖 )𝑖=0 and R with output (𝑏, 𝑟𝑏 )
+                                                                               for a uniformly chosen 𝑏 ∈ Z𝛾 . A secure rOT protocol ensures that
+Preprocessing vs one-time setup. Various OPRFs require a one-                  R and S learn nothing beyond their outputs. When 𝛾 = 2, we get the
+                                                                                                                        
+time setup, such as the publishing of a server public key (e.g. [57]),         usual 1-out-of-2 Random OT or “ 21 -Random OT”. It is well known
+or likewise for the client to register themselves with the server              that random-OT can be used to build the more standard notion of
+(e.g. [4]). On the other hand, preprocessing OPRFs require the client          OT where R and S choose 𝑏 and (𝑟𝑖 ) respectively [19]. However,
+and server perform a potentially expensive offline protocol, which             we choose to work with random-OT as it leads to a more natural
+can then be amortized across various online phases (e.g. [55]). In             “preprocessing” construction.
+the applications we consider, such as PSOs and MPC, preprocess-                    Our construction uses a Random OT functionality with two dif-
+ing phases fit into the API of the higher-level protocols, so we do            ferent parametrizations. In Figure 5 of Appendix C, we formally
+not consider them a hindrance. A full summary of the existing                  define the two Random OT functionalities (using the formulation
+semi-honest OPRF protocols believed to resist quantum attacks                  of [33]) in the universally composable (UC) model [31]. The advan-
+(including Pool) is given in Table 1, where we note that all such              tage of using UC secure formulations of Random OT functionalities
+known constructions utilize preprocessing. In addition, we provide             is that we may arbitrarily compose realizations of these idealized
+a performance comparison with malicious OPRF protocols in Ap-                  functionalities without compromising security. The functionali-
+                                                                                                             𝑝,ℓ                   𝑞,𝜏,ℓ
+pendix A, but where zero-knowledge proof and commitment costs                  ties we use are denoted F Δ                and F 2            . The former has
+are removed to ensure a fair comparison.                                                                    ( 1 ) -rOT            ( 1) -rOT
+                                                                               (𝛾, M) = (ZΔ , Z𝑝 ) whereas the latter has (𝛾, M) = (Z2, Z𝜏𝑞 ). In
+                                                                               both cases, the parameter ℓ represents the number of individual OT
+2    BACKGROUND                                                                correlations output by the functionality in both cases.
+                                                                                   We may design constructions that have access to the two ideal-
+Notation. We continue to use the notation defined in Section 1.1.              ized Random OT functionalities F Δ
+                                                                                                                      𝑝,ℓ
+                                                                                                                                 and F 2
+                                                                                                                                         𝑞,𝜏,ℓ
+                                                                                                                                                   . Any security
+For integers 𝑝 and 𝑞 we write 𝑝 | 𝑞 to denote that 𝑝 divides 𝑞 exactly.                                              ( 1 ) -rOT          ( 1) -rOT
+A probabilistic polynomial time (PPT) algorithm is a probabilistic             properties proven
+                                                                                                to hold for suchconstructions are said to hold in
+algorithm that runs in time bounded by some polynomial function                                      𝑝,ℓ        𝑞,𝜏,ℓ
+                                                                               the “idealized F Δ          ,F          -hybrid model”. To move from
+of 𝜆. We say that an algorithm A has oracle access to another algo-                              ( 1 ) -rOT ( 21) -rOT
+rithm B if it can submit inputs to B and obtain the corresponding              this model to a construction in the real world, one simply needs to
+outputs. In particular, A has no knowledge of the inner workings               replace the functionalities with a UC-secure realization.
+of B and only has input-output access. To make explicit that A
+has oracle access to B, we write A B . Furthermore, we will often
+assume that algorithms are stateful. For such algorithms, it will be           2.2     Learning With Rounding
+assumed that the state may be modified whenever the algorithm                  The Learning With Rounding (LWR) assumption was introduced
+is called. For example, take A to be an algorithm with state st and            by Banerjee, Peikert and Rosen [14]. LWR can be seen as a variant
+input 𝑥. When we write 𝑦 ← A (𝑥; st), we implicitly assume that                of the Learning With Errors (LWE) problem [73] with a determin-
+A has the ability to modify the state st when it is run.                       istic error which makes it a particularly useful assumption in the
+                                                                           5
+                                                                                                            Alex Davidson, Amit Deo, and Louis Tremblay Thibault
+
+
+design of PRFs. The LWR assumption and its natural algebraic vari-                 view of the preprocessing interaction emulated by the preprocessing
+ants were used by numerous candidates in the recent NIST PQC                       algorithm. In order to have a realizable construction, one should
+standardization call [10, 11, 20, 39, 43].                                         ultimately describe the preprocessing algorithm as an interaction
+                                                                                   between a client and server.
+    Definition 2.1. For integers 𝑚(𝜆), 𝑛(𝜆), 𝑝 (𝜆), 𝑞(𝜆) and distribu-
+                              D                                                       Importantly, the PreProc algorithm takes only the server key as
+tion D over Z𝑛 , the LWR𝑚,𝑛,𝑝,𝑞    assumption states that the distribu-
+                                                                                   input. This models the common case where the server chooses its
+tion of (a𝑖 , ⌈a𝑖⊤ s⌋𝑞,𝑝 )𝑖=1
+                          𝑚 is computationally indistinguishable from
+                                                                                   key before OPRF clients are enrolled (e.g. in the case of Privacy
+uniform over (Z𝑞𝑛 × Z𝑝 )𝑚 for a𝑖 ←$ Z𝑞𝑛 , s ←$ D.                                  Pass [37]). After the preprocessing phase, the client is able to use its
+    Equivalently, if 𝑋 denotes the the distribution of (a𝑖 , ⌈a𝑖⊤ s⌋𝑞,𝑝 )𝑖=1
+                                                                         𝑚
+                                                                                   state to run the OPRF on any input of its choice. We recall that RO
+and 𝑈 denotes the aforementioned uniform distribution, then for                    in a superscript denotes oracle access to a hash function that will
+all PPT adversaries A, the following advantage is negl(𝜆):                         be modeled as a random oracle. In order to recover the definition of
+         LWRn,p,q                                                                  a preprocessing OPRF where there is no public tag/input, the value
+    Adv A           (𝜆) := | Pr [A (𝑥) ⇒ 1] − Pr [A (𝑢) ⇒ 1]|.
+                             𝑥←$𝑋                          𝑢←$𝑈                    of 𝑡 in the following definition can be fixed, e.g. 𝑡 = ⊥.
+   The parameter 𝑚 is referred to as the number of samples, 𝑛 is
+                                                          D
+referred to as the dimension and (𝑝, 𝑞) are moduli. LWR𝑛,𝑝,𝑞   with                   Definition 3.1 (Adapted from [74]). A preprocessing partial obliv-
+𝑚 omitted is the LWR assumption for any polynomial number of                       ious PRF (PPOPRF) is a tuple of PPT algorithms F = (Setup,
+samples 𝑚. We will use the LWR problem where secrets are sampled                   KeyGen, PreProc, Request, BlindEval, Finalize, Eval).
+uniformly over {0, 1}𝑛 . As short-hand notation, we will write this                F .Setup generates public parameters pp and initializes the initial
+         {0,1}
+as LWR𝑚,𝑛,𝑝,𝑞 and refer to this problem as binary secret LWR.                      global server state GstS to ⊥. F .KeyGen samples a public/secret
+   Although there are reductions from standard LWE to LWR, they                    key pair (pk, sk). The preprocessing algorithm F .PreProc uses pp
+either require (i) a super-polynomial modulus and modulus-to-error                 with input sk to output a client state stC and a local server state stS
+ratio [14] or (ii) that the number of samples 𝑚 to be known ahead of               that is automatically appended to the global server state GstS .
+time [8]. These reductions provide very useful theoretical evidence                Oblivious evaluation is an interactive protocol between C and S,
+that the LWR problem is hard. On a less positive note, Newton and                  here presented as algorithms F .Request, F .BlindEval, F .Finalize
+Richelson [70] showed that there cannot exist a “point-wise” reduc-                working as follows:
+tion from a hard LWE problem to LWR if 𝑞 > 𝑝 2/3+𝑐 for some small                      (1) First, C runs the algorithm F .RequestRO      pp (pk, 𝑡, 𝑥; stC ) us-
+constant 𝑐 and prime 𝑞. However, we stress that only reductions                            ing state stC , taking a public key pk, a “tag” or public input
+lying in a particular model are considered here. In particular, the                        𝑡 and a private input 𝑥. It updates its state stC and outputs
+reductions considered are not allowed to reject samples and must                           a request message req or an abort symbol ⊥, which is sent
+map each individual LWE sample to an individual LWR sample.                                to the server.
+By utilizing rejection, one can obtain a reduction from the LWE                        (2) S runs F .BlindEvalRO pp (sk, 𝑡, req; GstS ) taking as input a se-
+problem with uniform error distribution in [−𝑞/(2𝑝), +𝑞/(2𝑝)) to                           cret key sk, a tag 𝑡 and the request message req using global
+LWR that holds for any secret distribution [23] whenever 𝑝 divides                         state GstS . It produces a response message rep or an abort
+𝑞. This particular reduction relates closely to concrete cryptanal-                        symbol ⊥ sent back to C and updates its global state GstS .
+ysis. In particular, state-of-the-art parameter selection for LWR                      (3) Finally, C runs F .Finalize(rep; stC ) which takes the re-
+considers the hardness of the LWE problem with uniform error in                            sponse message and its previously constructed state stC
+the aforementioned interval [3]. In practice, one may find secure                          and either outputs a PRF evaluation or ⊥ if rep is rejected.
+parameters using the well-known lattice-estimator tool7 [7]. We
+note that binary LWE keys are practically prominent, and are a key                 The unblinded evaluation algorithm F .Eval is deterministic and
+feature of the TFHE fully homomorphic encryption scheme [40, 77].                  takes as input a secret key sk, an input pair (𝑡, 𝑥) and outputs a PRF
+                                                                                   evaluation 𝑧.
+3    ADAPTING THE (P)OPRF SECURITY MODEL                                              We also define sets F .SK, F .PK, F .T, F .X and F .Out represent-
+We now present the definition of a (round optimal) preprocessing,                  ing the secret key, public key, tag, private input, and output space,
+partial OPRF or (PPOPRF) following [74]. Previous work using these                 respectively. We define the input space F .In = F .T × F .X. We
+definitions exclude OPRF candidates that function with an offline                  assume efficient algorithms for sampling and membership queries
+“preprocessing” phase. Consequently, we adapt these definitions to                 on these sets.                                                       □
+include a PreProc algorithm into the syntax/definitions. We will
+assume here that the adversaries are semi-honest i.e. that they                      The correctness definition below captures the fact that a single
+follow the protocol honestly. In reality, the preprocessing phase                  run of the preprocessing algorithm may be used to obtain multiple
+will be an interactive protocol between a client and server. However,              evaluations. The parameter 𝜏 denotes the number of evaluations
+since we are working in the semi-honest model, the preprocessing                   possible.
+phase will be modeled as an efficient probabilistic algorithm PreProc
+that honestly emulates a real world preprocessing interaction. The                   Definition 3.2 (PPOPRF Correctness). For an integer 𝜏 ≥ 1, a
+output of PreProc is split into two distinct parts – the client state and          PPOPRF
+the server state. The client/server state contains the client/server’s
+7 Available at https://github.com/malb/lattice-estimator                            F = (Setup, KeyGen, PreProcRequest, BlindEval, Finalize, Eval)
+                                                                               6
+Pool: A Practical OT-based OPRF from Learning with Rounding
+
+
+is 𝜏-correct if for any server global state GstS , and any (𝑡 𝑗 , 𝑥 𝑗 ) 𝑗 ∈ [𝜏 ] ,                          where SH-PPOPRF A,𝑏
+                                                                                                                            F,Sim,RO
+                                                                                                                                     (𝜆) is defined as in Figure 1.
+                                   pp←$ F.Setup(1𝜆 )                                       
+                                                                                                               The remaining security notion in the semi-honest model consid-
+                                    (pk,sk)←$ F.KeyGenRO
+                                                                                           
+                                                             pp (1 )
+                                                                  𝜆
+                                                                                           
+                                    stC ,stS ←$ F.PreProcpp (sk)
+                                                                                                         ers an adversarial server that wishes to passively learn the private
+   𝑧1 =F.EvalRO
+                                                                                           
+               pp (sk,𝑡 1 ,𝑥 1 )                                                            
+                 RO                Gst  S ←Gst   S ∥stS
+                                                                                                        inputs of clients. The definition is again heavily inspired by [74]
+     ∧ 𝑧 2 =F.Evalpp (sk,𝑡 2 ,𝑥 2 )                                                          = 1.
+Pr ∧ ...                           for 𝑗 ∈ [𝜏 ]:
+   
+                                                                                                        with the addition of an honestly performed preprocessing algo-
+   ∧ 𝑧𝜏 =F.EvalRO (sk,𝑡𝜏 ,𝑥𝜏 ) req 𝑗 ←$ F.RequestRO       pp (pk,𝑡  ,𝑥
+                                                                    𝑗 𝑗 C ;st   )           
+                 pp                                                                                    rithm. The security game and oracles are presented in fig. 2. The
+                                     rep    ←$ F.BlindEvalROpp (sk,𝑡 𝑗 ,req   ;GstS ∥stS ) 
+                                          𝑗                                 𝑗                          definition gives a semi-honest server access to a PreProc oracle
+                                                         RO
+   
+                                     𝑧 𝑗 ←$ F.Finalizepp (rep 𝑗 ,stC )                     
+                                                                                                        and an oracle Run that takes as input two client inputs (𝑥 0, 𝑥 1 )
+    We next define pseudorandomness of a PPOPRF [74] against                                             and two “pointers” to preprocessing states (𝑖 0, 𝑖 1 ). For challenge bit
+semi-honest clients adapted to a preprocessing model. In order                                           𝑏 ∈ {0, 1}, the Run oracle first runs F .Request() on input 𝑥𝑏 using
+to obtain a definition for semi-honest adversaries, we alter the                                         the state pointed to by 𝑖 0 and then produces an honest response
+BlindEval oracle from [74] so that it takes a PRF input rather than                                      and finalized evaluation. We call the (request, response, finalize)
+an arbitrary PPOPRF request. The oracle then computes an honestly                                        triple (req0, rep0, 𝑧 0 ). It then proceeds to do the same for input 𝑥 1−𝑏
+generated request message and returns the server response to the                                         using the state pointed to by 𝑖 1 yielding the triple (req1, rep1, 𝑧 1 ).
+adversary. GstSim, Gst𝑆 , Gst𝐶 are the global states of a simulator,                                     If 𝑏 = 0, then Run returns the two triples as they are whereas if
+honest server and semi-honest client respectively.                                                       𝑏 = 1 the triples with 𝑧 0 and 𝑧 1 swapped are returned. The def-
+    Intuitively, the definition captures the notion that a semi-honest                                   inition requires that the adversarial server A cannot effectively
+adversarial client A cannot distinguish between the real world                                           distinguish between the two cases, implying that a semi-honest
+(with 𝑏 = 1) where it interacts with a true implementation of F , or                                     server cannot distinguish between transcripts corresponding to
+an ideal world (with 𝑏 = 0) where preprocessing and blind evalua-                                        inputs of its choice.
+tion are simulated without using a secret key and PRF evaluation                                               We note that this “triple” formulation follows the blueprint
+is replaced by an idealized truly random function (denoted ROFn ).                                       of [74] in such a way that the triple 𝑇0 in fig. 2 always uses the
+A key point is that the simulation only uses values known to the                                         state pointed to by 𝑖 0 and 𝑇1 always uses the state pointed to by
+adversarial client throughout its execution and a limited number                                         𝑖 1 . Further, the 𝑧-entry in 𝑇 𝑗 always contains a finalize run for a
+of ROFn outputs that it obtains via a LimitEval oracle. Specifically,                                    response/requests on 𝑥 𝑗 for 𝑗 ∈ {0, 1}. A caveat is that if Run en-
+the number of ROFn calls available to the simulator is bound by the                                      counters ⊥ at any point, it returns ⊥. This prevents an adversary
+number of times preprocessing (multiplied by the parameter 𝜏) has                                        from distinguishing the cases 𝑏 = 0 and 𝑏 = 1 by using state point-
+been called and the number of blind evaluation queries made by the                                       ers where one pointer yields a valid request/response and the other
+adversary. This implies that the client essentially learns nothing                                       yields a request/response that equals ⊥.
+about the secret key during its real-world interaction (beyond the
+                                                                                                           Definition 3.4 (Request Privacy (POPRIV1)). We say a PPOPRF
+PRF evaluations corresponding to its queries).
+                                                                                                         F has request privacy against a semi-honest server if for all PPT
+    In the security game (fig. 1), the oracle Prim(𝑥) provides oracle
+                                                                                                         adversary A the following advantage is negl(𝜆):
+access to a random oracle that may be used in the PPOPRF con-
+struction. This oracle appears in the definition from [74]. For the                                             po-priv1
+                                                                                                            Adv F,Sim,RO,A (𝜆) :=
+case 𝑏 = 0 the simulator is allowed to use only a limited number of
+ROFn queries to simulate the random oracle accessed via Prim(𝑥).                                               h                    i    h                    i
+This is particularly useful for OPRF designs that make extensive                                             Pr POPRIV1 A,1
+                                                                                                                        F,RO
+                                                                                                                             (𝜆) ⇒ 1 − Pr POPRIV1 A,0
+                                                                                                                                                  F,RO
+                                                                                                                                                       (𝜆) ⇒ 1 ,
+use of hash functions to obtain PRF output such as 2HashDH [57]
+and related designs. Again, the bounds in LimitEval ensure the
+                                                                                                         where POPRIV1 A,𝑏
+                                                                                                                       F,RO
+                                                                                                                            (𝜆) is defined in Figure 2.
+simulator only uses an appropriate number of random function
+(ROFn ) calls to simulate BlindEval/Prim responses (i.e., at most one
+per client request and no more than 𝜏 multiplied by the current                                          Malicious Security. We now informally discuss how to derive
+number of preprocessing calls).                                                                          maliciously secure definitions. In order to define PPOPRFs with
+                                                                                                         malicious security, one could replace the PreProc algorithm by
+   Definition 3.3 (Pseudorandomness). We say a PPOPRF F is pseu-                                         an idealized functionality FPreProc that interfaces with malicious
+dorandom against semi-honest clients with 𝜏-reusable preprocess-                                         clients and servers. In this case, access to PreProc in the definitions
+ing if for all PPT adversaries A, there exists a PPT simulator Sim                                       would be replaced by malicious access to the idealized FPreProc func-
+such that the following advantage is negl(𝜆):                                                            tionality. The remaining oracles for malicious client/server security
+                                                                                                         that do not depend on PreProc could then be replaced by their
+             sh-ppoprf                                                                                   counterparts in the malicious-security definitions from [74] (with
+       Adv F,Sim,RO,A (𝜆) :=
+                                                                                                         the caveat that an extra input that points to a particular preprocess-
+                                     h                           i                                       ing state may be required). One would then write definitions and
+                                   Pr SH-PPOPRF A,1      (𝜆) ⇒ 1
+                                                F,Sim,RO                                                 proofs in a FPreProc -hybrid model where a UC secure realization of
+                                                                                                         the preprocessing functionality would be required for a concrete
+                                       h                           i
+                                   − Pr SH-PPOPRF A,0
+                                                  F,Sim,RO
+                                                           (𝜆) ⇒ 1   ,                                   instantiation. We leave formalizing these notions as future work
+                                                                                                         since we focus on semi-honest security.
+                                                                                                     7
+                                                                                                                                        Alex Davidson, Amit Deo, and Louis Tremblay Thibault
+
+
+
+                   Game SH-PPOPRF A,𝑏
+                                  F,Sim,RO
+                                           (𝜆)                                   Oracle PreProc()                       Oracle BlindEval(𝑡, 𝑥, 𝑖)
+                   𝑞𝑠,𝑡 , 𝑞𝑡 , 𝑞𝑝 ← 0, 0, 0                                      𝑞𝑝 ← 𝑞𝑝 + 1                            Parse Gst𝐶 = (st𝐶,1 ∥ . . . ∥ st𝐶,𝑞𝑝 )
+                   stFn ←$ ROFn .Init(1𝜆 )         / F.In → F.Out
+                                                                                   0
+                                                                                 st𝐶 ← Sim.PreProc(pp0 ; GstSim )       if 𝑖 > 𝑞𝑝 then return ⊥
+
+                   stRO ←$ RO.Init(1 )      𝜆                                       1
+                                                                                 (st𝐶 , st𝑆1 ) ← F.PreProcpp1 (sk)      req ← F.RequestRO
+                                                                                                                                       pp𝑏 (pk𝑏 , 𝑡, 𝑥; st𝐶,𝑖 )
+
+                   pp1 ←$ F.Setup(1 )       𝜆                                    Gst𝑆 ← Gst𝑆 ∥ st𝑆1                     if req = ⊥ then return ⊥
+                    (GstSim , pk0 , pp0 ) ←$ Sim.Init(pp1 )                                          𝑏                  if req ≠ ⊥ then 𝑞𝑡 ← 𝑞𝑡 + 1
+                                                                                 Gst𝐶 ← Gst𝐶 ∥ st𝐶
+                    (sk, pk1 ) ←$ F.KeyGenRO    𝜆                                                                       rep0 ←$ Sim.BlindEvalLimitEval (𝑡, 𝑥, req; GstSim )
+                                          pp1 (1 )                               return st𝐶  𝑏
+
+                   Gst𝑆 , Gst𝐶 ← ⊥, ⊥                                                                                   rep1 ←$ F.BlindEvalRO
+                                                                                                                                           pp1 (sk, 𝑡, req; Gst𝑆 )
+                     ′          PreProc,Eval,BlindEval,Prim                                                             return rep𝑏
+                   𝑏 ←$ A                                      (pp𝑏 , pk𝑏 )      Oracle LimitEval(𝑡, 𝑥)
+                   return 𝑏 ′                                                    𝑞𝑡,𝑠 ← 𝑞𝑡,𝑠 + 1
+                                                                                 if 𝑞𝑡,𝑠 ≤ 𝑞𝑡 ∧ 𝑞𝑡,𝑠 ≤ 𝜏𝑞𝑝 then         Oracle Prim(𝑥)
+                   Oracle Eval(𝑡, 𝑥)                                               return Eval(𝑡, 𝑥 )                   ℎ 0 ←$ Sim.EvalLimitEval (𝑥; GstSim )
+                   𝑧 0 ← ROFn .Eval( (𝑡, 𝑥 ); stFn )                             return ⊥                               ℎ 1 ←$ RO.Eval(𝑥; stRO )
+                   𝑧 1 ← F.EvalRO
+                               pp1 (sk, 𝑡, 𝑥 )                                                                          return ℎ𝑏
+                   return 𝑧𝑏
+
+
+                                    Figure 1: Pseudorandomness game against semi-honest clients adapted from [74].
+
+
+                                                                                                         server (𝑏𝑖 ) when receiving their portion of random masks are then
+ Game POPRIV1 A,𝑏
+              F,RO
+                   (𝜆)                      Oracle Run(𝑡, 𝑥 0, 𝑥 1, 𝑖 0, 𝑖 1 )
+                                                                                                         shifted by their secret key bits, and these bits (𝑏¯𝑖 ) and are then sent
+ 𝑞𝑝 ← 0                                     if 𝑖 0 > 𝑞𝑝 ∨ 𝑖 1 > 𝑞𝑝 then return ⊥
+                                                                                                         to the client. The output of the preprocessing phase is captured in
+ Gst𝐶 , Gst𝑆 ← ⊥, ⊥                         Parse Gst𝐶 = (st𝐶,1 ∥ . . . ∥ st𝐶,𝑞𝑝 )
+                                                                                                         the respective states st𝐶 and st𝑆 .
+ pp ←$ F.Setup(1 )  𝜆                       Parse Gst𝑆 = (st𝑆,1 ∥ . . . ∥ st𝑆,𝑞𝑝 )
+
+ (pk, sk) ←$ F.KeyGenRO   𝜆
+                     pp (1 )
+                                            for 𝑗 ∈ {0, 1} do                                            Online phase. We denote the client input as 𝑥 and the associated
+    ′
+ 𝑏 ←$ A     PreProc,Run,RO
+                             (pp, pk, sk)
+                                                req 𝑗 ←$ F.RequestRO
+                                                                  pp (pk, 𝑡, 𝑥 𝑗 ⊕𝑏 ; st𝐶,𝑖 𝑗 )          vector a := 𝐻 (𝑥) for a hash function 𝐻 : {0, 1}∗ → Z𝑞𝑛 . Ulti-
+ return 𝑏 ′
+                                                if req 𝑗 = ⊥ then return ⊥                               mately, the client wishes to learn 𝑃𝑅𝐹 sk (𝑥) := ⌈a⊤ sk⌋𝑞,𝑝 where
+                                                rep 𝑗 ←$ F.BlindEvalRO
+                                                                    pp (sk, 𝑡, req 𝑗 ; Gst𝑆 )            sk = (sk1, . . . , sk𝑛 ) ∈ {0, 1}𝑛 is the server’s secret key. To this end,
+ Oracle PreProc()                               if rep 𝑗 = ⊥ then return ⊥                               the 𝑖-th 1-out-of-2 Random OT from preprocessing will be used by
+ 𝑞𝑝 ← 𝑞𝑝 + 1                                    𝑧 𝑗 ←$ F.FinalizeRO
+                                                                 pp (rep 𝑗 ; st𝐶 )                       the server to learn either 𝑟𝑖 or 𝑎𝑖 + 𝑟𝑖 where 𝑟𝑖 is a uniform element
+ st𝐶 , st𝑆 ← F.PreProc(sk)                      if 𝑧 𝑗 = ⊥ then return ⊥                                 chosen over Z𝑞 . If sk𝑖 = 0, the server knows 𝑟𝑖 from preprocessing.
+ Gst𝐶 ← Gst𝐶 ∥ st𝐶                          𝑇0 ← (req0 , rep0 , 𝑧𝑏 )                                     Otherwise it can use its preprocessing output to learn 𝑎𝑖 + 𝑟𝑖 by
+ Gst𝑆 ← Gst𝑆 ∥ st𝑆                          𝑇1 ← (req1 , rep1 , 𝑧 1−𝑏 )                                  subtracting its received 1-out-of-2 OT string from the 𝑒𝑖 component
+ return st𝑆                                 return (𝑇0 ,𝑇1 )                                             of the request message. In the case that the server learns 𝑎𝑖 + 𝑟𝑖 , the
+                                                                                                         𝑟𝑖 terms acts as a one-time pad, information theoretically hiding 𝑎𝑖
+                                                                                                         as 𝑟𝑖 is hidden from the server during preprocessing. Additionally,
+        Figure 2: Request privacy against semi-honest servers.
+                                                                                                         the client sends 𝑏¯′ ∈ ZΔ to help the server craft its response. This
+                                                                                                         explains the request algorithm.
+                                                                                                             For blind evaluation, the server adds together its learned strings
+4        FORMAL CONSTRUCTION                                                                             to obtain 𝑎˜ Σ = a⊤ sk + 𝑟 Σ , where 𝑟 Σ := 𝑛𝑖=1 𝑟𝑖 , where the blinding
+                                                                                                                                                                 Í
+We now formally present the Pool construction, beginning with a
+                                                                                                                 Í𝑛
+                                                                                                         factor 𝑖=1 𝑟𝑖 is fully known to the client. Therefore, we would like
+description of the preprocessing phase in Figure 3. The remaining                                        the server to transfer ⌈𝑎˜ Σ − 𝑟 Σ ⌋𝑞,𝑝 to the client without leaking
+algorithms are presented in Figure 4. Essentially, we have separated                                     any further information. A naive way to do this would be to use
+the construction described in the introduction into the usual OT                                         a 1-out-of-𝑞 OT with sender strings ⌈𝑎˜ Σ − 𝑖⌋𝑞,𝑝 for 𝑖 = 0, . . . , 𝑞.
+preprocessing and online phases. As a result, we describe and prove                                      Then with knowledge of 𝑟 Σ the client could choose to learn the
+Pool secure in an FOT -hybrid model using calls to idealized OT                                          appropriate string. However, the sequence (⌈𝑎˜ Σ −𝑖⌋𝑞,𝑝 )𝑖=0 is simply
+                                                                                                                                                                                        𝑞−1
+functionalities. In Section 6, we replace the OT functionalities with                                    a cyclic shift of (0, . . . , 0, 1, . . . , 1, . . . , . . . , 𝑝 − 1, . . . , 𝑝 − 1), where
+concrete OT constructions to obtain a concrete scheme.                                                   each value is repeated Δ times. In particular, any cyclic shift of this
+Preprocessing. This phase consists of two separate Random OT                                             vector has the property that for any index 𝑖 whose value is 𝑦𝑖 , the
+runs. For intuition, we set 𝜏 = 1 and ignore 𝑡. For the 𝑛 1-out-of-2                                     entry at index 𝑖 + 𝑗 Δ takes the value 𝑦𝑖 + 𝑗 mod 𝑝. Therefore, we
+Random OTs (where sent strings are in M = Z𝑞 ), the client is the                                        use this redundancy to use a 1-out-of-Δ OT in the blind evaluation
+sender whereas in the 1-out-of-Δ Random OTs (where sent strings                                          algorithm, allowing the server to only send strings (⌈𝑎˜ Σ −𝑖⌋𝑞,𝑝 )𝑖=0                 Δ−1 .
+are in M = Z𝑝 ), the server is the sender. In essence, the server and                                    Now, the client learns ⌈𝑎˜ Σ − (𝑟 Σ mod Δ)⌋𝑞,𝑝 from these strings
+client share random masks that allow them to compute the OPRF in                                         and then corrects using the aforementioned structure to derive
+the online phase. The only thing to add is that the bits used by the                                     ⌈a⊤ sk⌋𝑞,𝑝 . More concretely, the server sends blinded versions of
+                                                                                                    8
+Pool: A Practical OT-based OPRF from Learning with Rounding
+
+
+                                                                                                left as future work. We note however, that the required server zero-
+ PreProc(sk):
+                                                                                                knowledge proofs are in comparison much simpler and therefore
+ For a client C with input ⊥, server S with input sk ∈ {0, 1}𝑛 and public                       likely to be much more efficient than the client ones.
+ parameters pp = (𝜏, 𝑛, 𝑝, 𝑞, 𝜆), perform the following:                                           Aside from proving correctness of 𝑎(𝑥), Leap [55] has a similar
+      (1) Sample unique session ID uid ∈ {0, 1} 𝜆                                               format to ours, consisting of OT functionalities (plus extra rounds
+                   𝑞,𝜏,𝑛
+      (2) Run F 2             on input (Send, C, uid) from C and                                for computing OLE exchanges that we do not require), and uti-
+                   ( 1 ) -rOT
+           (Receive, S, uid) from S. As a result, the client obtains                            lizes preprocessing. Furthermore, the masking/unmasking routine
+                                   𝑗           𝑗                                                is relatively similar. As a result, one could potentially adapt the
+                      𝑆 C := { (𝑟 0,𝑖 , 𝑟 1,𝑖 ) ∈ Z𝑞 × Z𝑞 } (𝑖,𝑗 ) ∈ [𝑛] × [𝜏 ]
+                                                                                                security proof in the malicious model used in that work to obtain
+           and the server obtains
+                                       𝑗
+                                                                                                a malicious variant of our protocol, utilizing malicious variants of
+                    𝑅S := { (𝑏𝑖 , 𝑟𝑏 ,𝑖 ) ∈ {0, 1} × Z𝑞 } (𝑖,𝑗 ) ∈ [𝑛] × [𝜏 ] .                 OT, and extractable commitments for binding the adversary to their
+                                           𝑖
+                    𝑝,𝜏
+      (3) Run     FΔ              on input (Send, S, uid) from                    S   and       input choices.
+                     ( 1 ) -rOT                                                                    Given there are various applications of OPRFs in the semi-honest
+          (Receive, C, uid) from C. As a result, S                                obtains
+                      ′ , . . .,𝑟′
+          𝑆 S := { (𝑟 0,𝑗                       Δ 𝜏                                             setting, our primary goal here is to build a simple, round-optimal,
+                                 Δ−1,𝑗 ) ∈ (Z𝑝 ) } 𝑗 =1 and C obtains
+                                                                                                and highly efficient exchange for this functionality. Valuable future
+                       𝑅C := { (𝑏 ′𝑗 , 𝑟𝑏′ ′ ,𝑗 ) ∈ [0, Δ − 1] × Z𝑝 }𝜏𝑗=1 .                     work would analyze the capability to adapt our design using the
+                                                   𝑗
+
+     (4) Send 𝑏¯𝑖 ← 𝑏𝑖 ⊕ sk𝑖 to C.                                                              methods described above.
+ C obtains the state stC ← (𝑆 C , 𝑅C , {𝑏¯𝑖 }𝑖=1
+                                             𝑛 , (uid, 0) ).
+
+ S obtains the state stS ← (𝑆 S , 𝑅S , (uid, 0) ).
+                                                                                                5    CORRECTNESS AND SECURITY PROOFS
+                                                                                                In this section, we state theorems saying that Pool satisfies correct-
+                                                                                                ness (Theorem 5.1), pseudorandomness against semi-honest clients
+              Figure 3: Preprocessing phase of Pool.
+                                                                                                (Theorem 5.2) and request privacy against semi-honest servers (The-
+                                                                                                orem 5.3). The security proofs are only overviewed in the main
+                                                                                                body, but full proofs of all of the theorems below can be found in
+                                                                                                Appendix D. As a reminder, the F★-rOT★   functionalities are formally
+                Δ−1 in such a way that the client can unblind only the
+(⌈𝑎˜ Σ − 𝑖⌋𝑞,𝑝 )𝑖=0                                                                             defined in Appendix C.
+appropriate index using the 1-out-of-Δ OT from preprocessing. The
+server can ensure this by using its random 1-out-of-Δ OT output                                    Theorem 5.1. Assuming 𝑝 | 𝑞, the construction F in Figure 4 is
+and the value of 𝑏¯′ in the client’s request message.                                           𝜏-correct for any 𝜏 = poly(𝜆).
+   Throughout, the algorithms ensure elements of st𝐶 and st𝑆 are
+                                                                                                   Theorem 5.2. Take any 𝜏 = poly(𝜆) and any (𝑝, 𝑞) such that
+not reused by maintaining and incrementing counters. This is cru-
+                                                                                                𝑝 | 𝑞. Further, assume that RO behaves like a random oracle and that
+cial for security, and the request and blind evaluation algorithms                                        {0,1}
+check that the counter value is less than 𝜏 before running.                                     the LWR𝑛,𝑝,𝑞 assumption holds. Then the PPOPRF construction in
+                                                                                                Figure 4 is pseudorandom against
+                                                                                                                               semi-honest clients
+                                                                                                                                                   with 𝜏-reusable
+Achieving malicious security. As we mentioned in the introduc-                                                                     𝑝,ℓ        𝑞,𝜏,ℓ
+                                                                                                preprocessing in the idealized F Δ        ,F          -hybrid model.
+tion, one of the limitation of our approach is that we only realize                                                             ( 1 ) -rOT ( 21) -rOT
+security in the semi-honest model. We would have to use extra
+PQ commitments and zero-knowledge proofs to guarantee security                                     Proof. (Overview) We use a hybrid/game-hopping argument
+against a malicious adversary. Concretely speaking, these commit-                               starting with the game 𝐺 0 = SH-PPOPRF A,0       F,Sim,RO
+                                                                                                                                                          (𝜆) and then
+ments and proofs would attest to the fact that the preprocessing                                making a sequence of indistinguishable changes to reach 𝐺 4 =
+and online phases are performed jointly and correctly. At the very
+                                                                                                SH-PPOPRF A,1F,Sim,RO
+                                                                                                                      (𝜆). The simulator Sim and sequence of hy-
+least, the online proof needs to attest to the correct computation of
+𝑎(𝑥) = 𝐻 (𝑥) for some hash function 𝐻 that is modeled as a random                               brids is summarized in Figure 6 of Appendix D.2. In this figure, Sim
+oracle. This comes at a considerable cost to the client.                                        is described without any highlighting whereas changes between
+   In an attempt to alleviate this cost, one could potentially use                              subsequent games are highlighted using different colors. The key
+the relatively simple tree-based functions from [13] instead of a                               points are that the Sim.PreProc algorithm uses the dummy key
+random oracle 𝐻 . A disadvantage of this is that the resulting LWR                              0𝑛 during preprocessing and Sim.BlindEval sets all of the 𝑦𝑖 ’s uni-
+PRF is only proven secure according to an LWE problem with super-                               formly apart from the one that the client should be able to unblind.
+polynomial modulus. Heuristically, the same work [13] suggests                                  Calling the latter entry 𝑦𝑖 ∗ , Sim uses its LimitEval oracle to set 𝑦𝑖 ∗
+that one may use their construction with small moduli (𝑝, 𝑞) as                                 consistently with outputs of ROfn . As a brief overview, the proof
+long as 𝑝 | 𝑞. This would enable much simpler zero-knowledge                                    with respect to this simulator uses the following steps:
+proofs in a malicious client setting somewhat resembling the client                                 (1) 𝐺 1 replaces the ROFn oracle with a LWR PRF (this step uses
+zero-knowledge proofs in previous lattice-based OPRF construc-                                          the LWR assumption).
+tions [6, 50]. As a rough estimate, the LaBRADOR lattice-based                                      (2) 𝐺 2 updates the preprocessing algorithm to use the PRF
+proof system [22] would be expected to yield proof sizes of around                                      secret key (introduced in 𝐺 1 ) instead of the all-0 key (this
+50KB. Investigating a variety of zero-knowledge proof systems of-                                       step uses the fact that the preprocessing output, including
+fering trade-offs between proof size, prover time and verifier time is                                  𝑏¯′ appears uniform from the client-perspective),
+                                                                                            9
+                                                                                                                                                    Alex Davidson, Amit Deo, and Louis Tremblay Thibault
+
+
+
+ 𝐹 poprf .Setup(1𝜆 )                                                   𝐹 poprf .RequestRO In
+                                                                                       pp (pk, 𝑡, 𝑥; stC )                                   𝐹 poprf .BlindEvalpp (sk, 𝑡, req; GstS )
+ Sample 𝑝 (𝜆), 𝑞 (𝜆) s.t. 𝑝 | 𝑞 and dimension 𝑛 (𝜆)                    Parse stC = (𝑆 C , 𝑅C , {𝑏¯𝑖 }, (uid, ctr) )                          Parse req = (𝑡, (𝑒 1 , . . . , 𝑒𝑛 ), 𝑏¯′ , uid)
+ Sample preprocessing repetition parameter 𝜏                               where 𝑆 C := { (𝑟 0,𝑖 , 𝑟 1,𝑖 ) }, 𝑅C := { (𝑏 ′𝑗 , 𝑟𝑏′ ′ ,𝑗 ) }
+                                                                                             𝑗       𝑗                                       if  stS ∈ GstS with uid then return ⊥
+                                                                                                                                  𝑗
+ return pp ← (𝑛, 𝑝, 𝑞, 𝜏, 𝜆)                                                                                                                 if ctr ≥ 𝜏 then return ⊥
+                                                                       if ctr ≥ 𝜏 then return ⊥
+                                                                                                                                             ctr ← ctr + 1
+ 𝐹 poprf .KeyGen(1𝜆 )                                                  ctr ← ctr + 1
+                                                                                                                                             Parse stS = (𝑆 S , 𝑅S , (uid, ctr) )
+ sk ←$ {0, 1}𝑛                                                         a ← RO(𝑡, 𝑥 )             / RO : {0, 1} ∗ → Z𝑞𝑛                                                     𝑗                ′             ′
+                                                                                                                                                 where , 𝑅S = { (𝑏𝑖 , 𝑟𝑏 ,𝑖 ) }, 𝑆 S = { (𝑟 0,𝑗 , . . . 𝑟 Δ−1,𝑗 )}
+ pk ← ⊥                                                                for 𝑖 ∈ [𝑛] :                                                                                           𝑖
+                                                                                                                                             for 𝑖 ∈ [𝑛] :
+                                                                          𝑟𝑖 ← 𝑟𝑏ctr
+ 𝐹 poprf .FinalizeRO
+                                                                                 ¯𝑖 ,𝑖
+                     fin
+                  pp (rep, stfin )                                                         ctr
+                                                                                                                                                𝑎˜𝑖,0 ← 𝑟𝑏ctr𝑖 ,𝑖
+                                                                          𝑒𝑖 ← 𝑎𝑖 + 𝑟𝑖 + 𝑟 1− 𝑏¯ ,𝑖
+                                                                                                    mod 𝑞
+ Parse rep = ( (𝑦0 , . . . , 𝑦Δ−1 ), uid, ctr)   / Δ := 𝑞/𝑝                                         𝑖
+                                                                                                                                                𝑎˜𝑖,1 ← 𝑒𝑖 − 𝑟𝑏ctr𝑖 ,𝑖 mod 𝑞
+                                                                       𝑟 Σ ← 𝑟 1 + · · · + 𝑟𝑛 mod 𝑞
+ Parse stfin = ( (uid, ctr), 𝑟 Σ , 𝑟 )                                                                                                          𝑎˜𝑖 ← 𝑎˜𝑖,sk𝑖
+                                                                       𝑏¯′ = (𝑟 Σ mod Δ − 𝑏 ′ ) mod Δ
+                                                                                                  ctr                   / Δ := 𝑞/𝑝
+ 𝑦 ← 𝑦𝑟 Σ mod Δ − 𝑟 mod 𝑝                                                                                                                    𝑎˜ Σ ← 𝑎˜ 1 + · · · + 𝑎˜𝑛 mod 𝑞
+             𝑟 Σ − (𝑟 Σ mod Δ)                                         Store stfin ← ( (uid, ctr), 𝑟 Σ , 𝑟𝑏′ ′ )
+ 𝑧←𝑦−                  Δ       mod 𝑝       / division by Δ is over Z                                             ctr                         for 𝑖 ∈ [0, Δ − 1] :                   / Δ := 𝑞/𝑝
+ return 𝑧                                                              stC ← (𝑆 C , 𝑅C , {𝑏¯𝑖 }, (uid, ctr) )                                   𝑦𝑖 ← ⌈ (𝑎˜ Σ − 𝑖 ) mod 𝑞 ⌋𝑞,𝑝 + 𝑟𝑖′−𝑏¯ ′ mod Δ,ctr mod 𝑝
+                                                                       return (𝑡, (𝑒 1 , . . . , 𝑒𝑛 ), 𝑏¯′ , uid)                            stS ← (𝑅S , 𝑆 S , (uid, ctr) )
+   RO .Eval(sk, 𝑡, 𝑥)
+ 𝐹 poprf
+                                                                                                                                             return ( (𝑦0 , . . . , 𝑦Δ−1 ), uid, ctr)
+ a ← RO(𝑡, 𝑥 ) ∈ Z𝑞𝑛
+ 𝑧 ← ⌈a⊤ s⌋𝑞,𝑝
+ return z
+
+
+                                Figure 4: The online phase of Pool, with the OT-based preprocessing from Figure 3.
+
+
+    (3) 𝐺 3 finally updates the Sim.BlindEval response to be correct
+                                                                                                                2
+                                                                                                                1 -OT extension         (𝑛, 𝑝, 𝑞)       # evals     𝜏     Communication          Computation
+                                                                                                                                                                          Client Server          Client Server
+        in all entries with respect to the LWR secret key (using
+                                                                                                                                                           20       25     756 kB     768 kB      62 ms     62 ms
+        uniformity of the blinding values on all response-entries                                                                     (415, 24, 28 )
+                                                                                                                                                           213      218   17.5 MB    109.5 MB      1.1 s    575 s
+                                                                                                                  IKNP [56]
+        apart from the one accessed by the client).                                                                                                        20       24    756 kB      770 kB      79 ms    79 ms
+                                                                                                                                     (482, 28, 212 )
+                                                                                                                                                           213      217   9.1 MB      96 MB        1.1 s   634 ms
+To complete the proof, we show that 𝐺 3 is identical to 𝐺 4 from a
+                                                                                                                                                           20       25    792 kB      792 kB     154 ms    154 ms
+semi-honest client’s perspective. See Appendix D.2 for more details.                                                                  (415, 24, 28 )
+                                                                                                                                                           213      218   815 kB      887 kB      8.6 s     8.3 s
+                                                                 □                                              Silent OT [29]
+                                                                                                                                                           20       24    792 kB      792 kB     176 ms    176 ms
+                                                                                                                                     (482, 28, 212 )
+                                                                                                                                                           213      217   813 kB      879 kB       7s        7s
+   Theorem 5.3. Assume that 𝑝 | 𝑞. The PPOPRF construction in                                               Table 2: Preprocessing performance for “# evals” OPRF eval-
+Figure
+         4 is pseudorandom
+                              against semi-honest servers in the idealized                                 uations yielding 128 output bits, targeting 128 bits of security.
+    𝑝,ℓ          𝑞,𝜏,ℓ
+  FΔ          ,F           -hybrid model.
+   ( 1 ) -rOT ( 21) -rOT
+
+   Proof. (Overview) We use a hybrid/game-hopping argument,
+starting with the game 𝐺 0,𝑏 = POPRIV1 A,𝑏           (𝜆) and ending                                         6          EXPERIMENTAL ANALYSIS
+                                            F,Sim,RO
+with 𝐺 3,𝑏 , where the value of 𝑏 is no longer used. Thus, 𝐺 3,0 and                                        We now compare performance of Pool with previous work, via an
+𝐺 3,1 are indistinguishable and by extension, so are 𝐺 0,0 and 𝐺 0,1 as                                     open-source implementation8 . Implementation details and parame-
+required. As a brief overview, we make the following sequence of                                            ter choices are discussed in Section 6.1. In Section 6.2, we compare
+indistinguishable changes to Run.                                                                           efficiency with the state-of-the-art in PQ OPRF constructions.
+    (1) We first replace (𝑧𝑏 , 𝑧 1−𝑏 ) in Run’s output by (⌈RO(𝑡, 𝑥 0 ) ⊤ ·
+        sk⌋𝑞,𝑝 , ⌈RO(𝑡, 𝑥 1 ) ⊤ · sk⌋𝑞,𝑝 ), via PPOPRF correctness.                                         6.1         Implementation Details
+    (2) We next replace 𝑏¯′ in calls to F .Request by uniform values.                                       Our open-source reference implementation of Pool is written in
+        This is possible since 𝑏 ctr′ is hidden from the semi-honest                                        C++ and relies on libOTe [71] for the OT primitives. The libOTe
+        server A via an OT correlation.                                                                     library is used as is and parametrized with the statistical security
+    (3) We finally replace request elements (𝑒 1, . . . , 𝑒𝑛 ) by uniform                                   parameter set at 40 to match prior work [55, 66]. The implemen-
+        values. This step is done by showing that each 𝑒𝑖 is a sum of                                       tation is comprised of two distinct parts: the preprocessing phase,
+        terms, exactly one of which is uniformly distributed from                                           which incurs the largest communication and computation costs,
+        the perspective of the A via an OT correlation.                                                     and the online phase, which has relatively small communication
+At this point, the request messages and finalized outputs contained                                         costs and marginal computation costs.
+in Run’s output (𝑇0,𝑇1 ) are independent of the challenge bit 𝑏 as
+desired. The full proof is included in Appendix D.3.              □                                         8 https://github.com/tremblaythibaultl/ot-pq-oprf
+
+                                                                                                     10
+Pool: A Practical OT-based OPRF from Learning with Rounding
+
+
+
+   𝜆        (𝑛, 𝑝, 𝑞)      Comm.        Client Time           Server Time          256-bit uid. After some experimentation with the Lattice Estima-
+                                                                                   tor [7], we arrive at the suggested parameter sets given in Table 3.
+  100     (296, 24, 28 )    9.8 kB         𝛿 · 41 µs            𝛿 · 23 µs
+  100    (370, 28, 212 )    9.2 kB         𝛿 · 50 µs            𝛿 · 28 µs          Comparison. In Section 6.2 we compare Pool with the recent Leap
+                                                                                   construction [55] from Eurocrypt’25, at the 128-bit security level.
+  128     (415, 24, 28 )    13.6 kB        𝛿 · 57 µs            𝛿 · 32 µs
+                                                                                   There are a few reasons for this. Firstly, Leap is the most efficient
+  128    (482, 28, 212 )    11.9 kB        𝛿 · 64 µs            𝛿 · 36 µs
+                                                                                   OPRF candidate that has an open-source implementation, which
+Table 3: Single-threaded online performance of Pool with 128                       means that we can run their benchmarking code on the same hard-
+bits of output and 𝜆 bits of security, for associated parameters.                  ware as ours for a fair performance comparison. Other practical
+Note that 𝛿 = 128/log(𝑝), to indicate that each protocol run                       approaches, such as [2, 49, 75], do not provide such code, despite
+outputs only log(𝑝) bits, and thus needs to be repeated.                           giving benchmarks. We also note that recent cryptanalysis has
+                                                                                   shown that alternating moduli constructions [2, 49] may require
+                                                                                   more conservative parameter choices due to attacks on the under-
+                                                                                   lying weak PRFs, that would decrease the quoted efficiency [9].
+    All measures presented in this paper were obtained using an                    Furthermore, these constructions profit from making evaluations
+AWS t3.xlarge EC2 instance equipped with 4 vCPUs with AVX2                         in a batched amortized setting, where runtimes and bandwidth are
+enabled and 16 GB memory running ubuntu 24.04. Experiments are                     divided by the number of evaluations requested. As shown in [75],
+run 100 times, and measures are taken as the median of the results.                costs rise fairly dramatically (beyond the realms of practicality)
+Preprocessing. The preprocessing phase (see Figure 3) may also                     in a single-evaluation setting. Since many OPRF applications re-
+be considered as two separate phases, each containing a Random                     quire only low numbers of evaluations (e.g. [45, 59]), we include
+                                                
+OT interaction. The first phase is a set of 21 -OTs instantiated by                performance assessments in a single-evaluation setting for fairness.
+the Kyber version of the Masny-Rindal [66] protocol extended with
+                                                                                   6.2     Performance Analysis
+                                                                        
+IKNP [56] or Silent OT [29]. The second phase consists of a set of 𝑁1
+OTs which can be instantiated by KKRT [61] or Naor-Pinkas [69],                    We detail the preprocessing and online performance of Pool across
+again extending the Kyber version of [66]. Experimentally, we con-                 different parameter settings (see Tables 2 and 3). We then pick the
+firm the same findings noticed in [55], that KKRT is not particularly              most efficient setting of Pool for comparing with Leap across both
+efficient for low values of 𝑁 . Since we consider 𝑁 = Δ,    where Δ
+is always 16 in our experiments, we benchmark this Δ1 -OT using
+                                                                                   phases (see Tables 4 and 5). For the comparison, we assume 64 bits
+                                                                                   of PRF output, since this is the output length considered by Leap.
+the [69] approach. However, our end-to-end implementation in-
+cludes a KKRT-based variant. As before, 𝜏 denotes the number of                    Preprocessing. In Table 2, we run preprocessing using both IKNP-
+times the online OPRF protocol can be run before preprocessing                     based [56] and Silent OT-based [29] OT extension at the 128-bit
+must be run again. We further note that in Section 6.2, we report                  security level.9 In the single evaluation setting, the two methods
+preprocessing using additional optimizations for reducing the num-                 yield similar communication costs of around 750 kB-800 kB per
+ber of OTs, but our end-to-end implementation of preprocessing                     party whereas Silent OT takes around two to three times longer.
+uses a less optimized exchange for simplicity’s sake. In Appendix B,               However, in the batched setting with 213 evaluations, the Silent OT
+we experimentally compare alternative methods for implementing                     method yields considerably worse computational costs (between 7
+Silent OT, depending on whether we would like to optimize commu-                   and 9 seconds), but the communication costs are almost unchanged
+nication (𝑛 OTs variant) or runtimes (𝑛 ·𝜅 OTs). In our preprocessing              from the single evaluation setting. Contrarily, the batched commu-
+comparison in Tables 2 and 4, we are more interested in lowering                   nication cost using IKNP requires orders of magnitude more com-
+communication, so we focus only on the results in the 𝑛 OTs case.                  munication, while the computational costs remain low at less than
+                                                                                   180 ms. We note that the benchmarks provided for Silent OT are
+Online phase. During the online phase, the client computes the
+                                                                                   obtained from an implementation that prioritizes optimizing com-
+Request and Finalize algorithms while the server computes the                                                       
+BlindEval algorithm (see Figure 4). Table 3 gives online communi-                  munication. In particular, the 21 -OTs with output length 𝜏 · log(𝑞)
+cation and computation measures for both the client and the server                 are benchmarked by producing 128-bit sender strings in libOTe
+with respect to each of the proposed parameter sets.                               and expanding to 𝜏 · log(𝑞) bits using a PRNG. In Appendix B, we
+                                                                                   discuss how modifications to this method can be used to reduce
+Parameter choices. We give parameters and associated perfor-
+                                                                                   runtimes at the cost of increasing the server’s communication.
+mance figures for both 100-bit and 128-bit security parameters, as
+is common in prior work. Unless otherwise specified, we aim for a                  Online phase. Table 3 shows the online costs for the proto-
+PRF output length of 𝐿 = 128 bits. As presented, the output length                 col for 𝜆-bit security levels (where 𝜆 ∈ {100, 128}). Overall, to-
+is log2 (𝑝), so a naive way to extend the output length would be                   tal communication varies between 9.2 kB and 13.6 kB, depending
+to set 𝑝 = 2128 . Instead, we may extend the LWR-based PRF to                      on the parametrization. Single-threaded client execution times
+                                                        ⌈𝐿/log2 (𝑝 ) ⌉×𝑛           for achieving 128-bit PRF outputs (via 𝛿 repetitions) range from
+compute 𝐹 s′ (𝑥) = ⌈𝐻 (𝑥) · s⌋𝑞,𝑝 where 𝐻 : {0, 1}∗ → Z𝑞                  .
+                                                                                   16 · 52 µs = 832 µs to 32 · 50 µs = 1.6 ms, depending on the value
+It is trivial to extend Pool to handle this case by running 𝛿 :=
+                                                                                   of 𝑝 (and thus 𝛿). For the server, we have execution times ranging
+⌈𝐿/log2 (𝑝)⌉ evaluations of the single-row construction in paral-
+                                                                                   from 16 · 32 µs = 512 µs to 32 · 28 µs = 896 µs. We note that the 𝛿
+lel (one per row of 𝐹 s′ ). Assuming 𝐿 and log2 (𝑝) are powers-of-2,
+the approximate theoretical cost in the online phase then becomes
+256 + ( [𝑛 log(𝑞) + log(Δ)] + [Δ · log(𝑝)]) · 𝛿 bits. This assumes a               9 This upper-bounds the performance of 100-bit security levels.
+
+                                                                              11
+                                                                                                           Alex Davidson, Amit Deo, and Louis Tremblay Thibault
+
+
+repetitions can be parallelized, improving the reported times by                        2
+                                                                                        1 -OT Ext.      # evals      Communication            Computation
+factors of up to 16 or 32 depending on whether 𝑝 = 28 or 24 .                                                        Client Server            Client Server
+
+Comparison with Leap. In Tables 4 and 5 we compare the pre-                                                20        426 kB      328 kB        26 ms     27 ms
+                                                                                           IKNP
+                                                                                                           213       271 MB      328 kB       790 ms    881 ms
+processing and online performance, respectively, of Pool with that             [55]
+of Leap, at the 128-bit security level.                                                                    20        445.9 kB   375.7 kB      27 ms      27 ms
+                                                                                        Silent OT
+   Starting with the case of preprocessing using IKNP OT extension,                                        213        472 kB     479 kB        6.4 s     11.1 s
+we see that the total communication overhead of Leap is around                                             20        756 kB      762 kB       52 ms     52 ms
+                                                                                           IKNP
+half the cost of Pool in the single evaluation setting, settling at                                        213       4.9 MB     48.1 MB       444 ms    219 ms
+                                                                               Pool
+∼750 kB, instead of ∼1.5 MB for Pool. However, in the multiple                          Silent OT          20        792 kB      792 kB       64 ms      63 ms
+evaluation setting, Leap incurs a very large communication cost of                       (𝑛 OTs)           213       811 kB      871 kB        3s         3s
+∼271 MB on the client-side. In contrast, Pool incurs a much lower             Table 4: Communication and computation cost of preprocess-
+total preprocessing cost of ∼53 MB in this setting, with 49.1 MB              ing algorithms provided by Leap [55] and this work (Pool)
+being included in the server-side costs. In terms of runtimes, both           with (𝑛, 𝑝, 𝑞) = (482, 28, 212 ). The parameter 𝜏 is set to match
+OPRFs are comparable with Pool performing significantly better in             the output size of [55], i.e. 𝜏 = # evals · 23 , for 64 output bits.
+the multiple evaluation setting.
+   In the Silent OT case, the communication cost of both protocols
+is dramatically lowered. The base communication cost of perform-
+ing preprocessing for a single OPRF evaluation in Pool is around                                                     Comm.      Client time     Server Time
+double the cost of Leap, but still less than 1 MB for either client or         Leap [55]                              23 kB        3 ms                4 ms
+server. The communication cost of running Silent OT-based prepro-
+                                                                                       (𝑛, 𝑝, 𝑞) = (415, 24, 28 )     6.8 kB     16 · 57 µs        16 · 32 µs
+cessing for multiple evaluations is almost equivalent to the single            Pool
+                                                                                       (𝑛, 𝑝, 𝑞) = (482, 28, 212 )    5.9 kB      8 · 64 µs        8 · 36 µs
+evaluation costs in both protocols, due to the very gradual growth
+                                                                              Table 5: Communication and computation cost of online
+of communication using this form of OT extension. In terms of run-
+                                                                              OPRF evaluation from Leap [55] and Pool. Performance and
+times, the costs of Pool are significantly lower than the cost of Leap
+                                                                              sizes are with respect to 64 bits of PRF output, to match Leap.
+in the multiple evaluation setting, taking only around 3 s of both
+client and server time, while the costs of Leap are over 2× more
+expensive. The single evaluation runtimes are almost equivalent.
+   In the case of online costs in Table 5, we firstly notice that the
+overall communication cost in Pool is around 25-30% of the com-               7    CONCLUSION
+munication cost in Leap. In terms of computation time, the number             We proposed Pool, a round-optimal OPRF from a standard PQ as-
+of repetitions of Pool determines the amount of time. In a purely             sumption (binary LWR). We showed (via a provided implementa-
+single-threaded execution (which is the fairest way of comparing              tion) that Pool is competitive or more efficient than existing OPRFs,
+with Leap’s benchmarks), we see that the client costs are either              that are based on less well-studied, yet plausible, post-quantum
+912 µs or 512 µs, depending on the parameter set. In the server’s             assumptions. Furthermore, it is orders of magnitude faster than
+case, this is either 512 µs or 288 µs, respectively. Therefore, server        OPRFs based on standard PQ assumptions. Viable applications for
+runtimes in Pool can be up to an order of magnitude more efficient            Pool include PSOs and MPC use-cases, and its basis on standard
+than in Leap, while client costs can be up to 6× smaller. Recall fur-         assumptions make it a strong candidate for Internet standardization
+ther that Leap has an online phase consisting of at least 3 rounds,           use-cases [44], where strong security guarantees are paramount.
+and thus the latency of the additional message could worsen the
+runtimes of Leap further in a real-world experiment (especially               8    ACKNOWLEDGEMENTS
+given the additional bandwidth overhead).                                     Alex Davidson’s work was supported by FCT and the CMU Portugal
+Discussion. Overall, we see that the online phase of Pool is more             program through project “Fully-Homomorphic Encryption from
+efficient than Leap in all cost metrics. Additionally, the number of          Post-Quantum Code-Based Assumptions”, ref. 2024.12595.CMU,
+online rounds (in the preprocessing model) in Leap is three whereas           and the LASIGE Research Unit, ref. UID/00408/2025 - LASIGE. The
+Pool is round optimal, meaning that additional network latency                authors would like to thank Fernando Virdia for providing helpful
+could drive the approaches even further apart. From a usability per-          discussions.
+spective, we also note that the server must initiate the connection
+in Leap. This is a burden for real-world applications, where clients          REFERENCES
+                                                                               [1] Adi Akavia, Andrej Bogdanov, Siyao Guo, Akshay Kamath, and Alon Rosen. 2014.
+must typically initiate the connection (at the HTTP layer, for exam-
+                                                                                   Candidate weak pseudorandom functions in AC0 𝑜 MOD2 . In ITCS 2014, Moni
+ple). Therefore, a real-world implementation of Leap could in fact                 Naor (Ed.). ACM, 251–260. https://doi.org/10.1145/2554797.2554821
+require four separate messages (including some sort of client hello            [2] Navid Alamati, Guru-Vamsi Policharla, Srinivasan Raghuraman, and Peter Rindal.
+                                                                                   2024. Improved Alternating-Moduli PRFs and Post-quantum Signatures. In
+message). For preprocessing, we observe that Pool has overheads                    CRYPTO 2024, Part VIII (LNCS, Vol. 14927), Leonid Reyzin and Douglas Stebila
+somewhat inline with Leap; with generally higher communication                     (Eds.). Springer, Cham, 274–308. https://doi.org/10.1007/978-3-031-68397-8_9
+but lower runtimes. We highlight that the preprocessing overhead               [3] Martin R. Albrecht, Benjamin R. Curtis, Amit Deo, Alex Davidson, Rachel
+                                                                                   Player, Eamonn W. Postlethwaite, Fernando Virdia, and Thomas Wunderer.
+in either protocol is amortizable and input-independent, meaning it                2018. Estimate All the LWE, NTRU Schemes!, See [35], 351–367. https:
+can be run in the background before the “online” exchange begins.                  //doi.org/10.1007/978-3-319-98113-0_19
+                                                                         12
+Pool: A Practical OT-based OPRF from Learning with Rounding
+
+
+ [4] Martin R. Albrecht, Alex Davidson, Amit Deo, and Daniel Gardham. 2024. Crypto                 In TCC 2018, Part II (LNCS, Vol. 11240), Amos Beimel and Stefan Dziembowski
+     Dark Matter on the Torus - Oblivious PRFs from Shallow PRFs and TFHE. In                      (Eds.). Springer, Cham, 699–729. https://doi.org/10.1007/978-3-030-03810-6_25
+     EUROCRYPT 2024, Part VI (LNCS, Vol. 14656), Marc Joye and Gregor Leander                 [26] Dan Boneh, Dmitry Kogan, and Katharine Woo. 2020. Oblivious Pseudorandom
+     (Eds.). Springer, Cham, 447–476. https://doi.org/10.1007/978-3-031-58751-1_16                 Functions from Isogenies. In ASIACRYPT 2020, Part II (LNCS, Vol. 12492), Shiho
+ [5] Martin R. Albrecht, Alex Davidson, Amit Deo, and Nigel P. Smart. 2021. Round-                 Moriai and Huaxiong Wang (Eds.). Springer, Cham, 520–550. https://doi.org/10.
+     Optimal Verifiable Oblivious Pseudorandom Functions from Ideal Lattices, See                  1007/978-3-030-64834-3_18
+     [52], 261–289. https://doi.org/10.1007/978-3-030-75248-4_10                              [27] Dan Boneh, Kevin Lewi, Hart William Montgomery, and Ananth Raghunathan.
+ [6] Martin R. Albrecht and Kamil Doruk Gür. 2024. Verifiable Oblivious Pseu-                      2013. Key Homomorphic PRFs and Their Applications, See [32], 410–428. https:
+     dorandom Functions from Lattices: Practical-Ish and Thresholdisable. In ASI-                  //doi.org/10.1007/978-3-642-40041-4_23
+     ACRYPT 2024, Part IV (LNCS, Vol. 15487), Kai-Min Chung and Yu Sasaki (Eds.).             [28] Daniel Bourdrez, Hugo Krawczyk, Kevin Lewi, and Christopher A. Wood. 2021.
+     Springer, Singapore, 205–237. https://doi.org/10.1007/978-981-96-0894-2_7                     The OPAQUE Asymmetric PAKE Protocol. Internet-Draft draft-irtf-cfrg-opaque-07.
+ [7] Martin R. Albrecht, Rachel Player, and Sam Scott. 2015. On the concrete hardness              IETF Secretariat. https://www.ietf.org/archive/id/draft-irtf-cfrg-opaque-07.txt
+     of Learning with Errors. J. Math. Cryptol. 9, 3 (2015), 169–203. http://www.                  https://www.ietf.org/archive/id/draft-irtf-cfrg-opaque-07.txt.
+     degruyter.com/view/j/jmc.2015.9.issue-3/jmc-2015-0016/jmc-2015-0016.xml                  [29] Elette Boyle, Geoffroy Couteau, Niv Gilboa, Yuval Ishai, Lisa Kohl, and Pe-
+ [8] Joël Alwen, Stephan Krenn, Krzysztof Pietrzak, and Daniel Wichs. 2013. Learning               ter Scholl. 2019. Efficient Pseudorandom Correlation Generators: Silent OT
+     with Rounding, Revisited - New Reduction, Properties and Applications, See                    Extension and More. In CRYPTO 2019, Part III (LNCS, Vol. 11694), Alexandra
+     [32], 57–74. https://doi.org/10.1007/978-3-642-40041-4_4                                      Boldyreva and Daniele Micciancio (Eds.). Springer, Cham, 489–518. https:
+ [9] Irati Manterola Ayala and Håvard Raddum. 2024. Zeroed Out: Cryptanalysis                      //doi.org/10.1007/978-3-030-26954-8_16
+     of Weak PRFs in Alternating Moduli. IACR Cryptol. ePrint Arch. (2024), 2055.             [30] Elette Boyle, Geoffroy Couteau, Niv Gilboa, Yuval Ishai, Lisa Kohl, and Peter
+     https://eprint.iacr.org/2024/2055                                                             Scholl. 2021. Low-Complexity Weak Pseudorandom Functions in AC0[MOD2] ,
+[10] Hayo Baan, Sauvik Bhattacharya, Scott R. Fluhrer, Óscar García-Morchón, Thijs                 See [65], 487–516. https://doi.org/10.1007/978-3-030-84259-8_17
+     Laarhoven, Ronald Rietman, Markku-Juhani O. Saarinen, Ludo Tolhuizen, and                [31] Ran Canetti. 2001. Universally Composable Security: A New Paradigm for
+     Zhenfei Zhang. 2019. Round5: Compact and Fast Post-quantum Public-Key                         Cryptographic Protocols. In 42nd FOCS. IEEE Computer Society Press, 136–145.
+     Encryption. In Post-Quantum Cryptography - 10th International Conference,                     https://doi.org/10.1109/SFCS.2001.959888
+     PQCrypto 2019, Chongqing, China, May 8-10, 2019 Revised Selected Papers (Lecture         [32] Ran Canetti and Juan A. Garay (Eds.). 2013. CRYPTO 2013, Part I. LNCS, Vol. 8042.
+     Notes in Computer Science, Vol. 11505), Jintai Ding and Rainer Steinwandt (Eds.).             Springer, Berlin, Heidelberg.
+     Springer, 83–102. https://doi.org/10.1007/978-3-030-25510-7_5                            [33] Ran Canetti, Pratik Sarkar, and Xiao Wang. 2020. Blazing Fast OT for Three-
+[11] Hayo Baan, Sauvik Bhattacharya, Óscar García-Morchón, Ronald Rietman, Ludo                    Round UC OT Extension. In PKC 2020, Part II (LNCS, Vol. 12111), Aggelos Kiayias,
+     Tolhuizen, Jose Luis Torre-Arce, and Zhenfei Zhang. 2017. Round2: KEM and                     Markulf Kohlweiss, Petros Wallden, and Vassilis Zikas (Eds.). Springer, Cham,
+     PKE based on GLWR. IACR Cryptol. ePrint Arch. (2017), 1183. http://eprint.iacr.               299–327. https://doi.org/10.1007/978-3-030-45388-6_11
+     org/2017/1183                                                                            [34] Sílvia Casacuberta, Julia Hesse, and Anja Lehmann. 2022. SoK: Oblivious Pseu-
+[12] Abhishek Banerjee, Hai Brenner, Gaëtan Leurent, Chris Peikert, and Alon Rosen.                dorandom Functions. In 2022 IEEE European Symposium on Security and Privacy.
+     2015. SPRING: Fast Pseudorandom Functions from Rounded Ring Products. In                      IEEE Computer Society Press, 625–646. https://doi.org/10.1109/EuroSP53844.
+     FSE 2014 (LNCS, Vol. 8540), Carlos Cid and Christian Rechberger (Eds.). Springer,             2022.00045
+     Berlin, Heidelberg, 38–57. https://doi.org/10.1007/978-3-662-46706-0_3                   [35] Dario Catalano and Roberto De Prisco (Eds.). 2018. SCN 18. LNCS, Vol. 11035.
+[13] Abhishek Banerjee and Chris Peikert. 2014.            New and Improved Key-                   Springer, Cham.
+     Homomorphic Pseudorandom Functions. In CRYPTO 2014, Part I (LNCS, Vol. 8616),            [36] Lorenzo Cavallaro, Johannes Kinder, XiaoFeng Wang, and Jonathan Katz (Eds.).
+     Juan A. Garay and Rosario Gennaro (Eds.). Springer, Berlin, Heidelberg, 353–370.              2019. ACM CCS 2019. ACM Press.
+     https://doi.org/10.1007/978-3-662-44371-2_20                                             [37] Sofía Celi, Alex Davidson, Steven Valdez, and Christopher A. Wood. 2024. Privacy
+[14] Abhishek Banerjee, Chris Peikert, and Alon Rosen. 2012. Pseudorandom Func-                    Pass Issuance Protocols. RFC 9578 (2024), 1–36. https://doi.org/10.17487/RFC9578
+     tions and Lattices. In EUROCRYPT 2012 (LNCS, Vol. 7237), David Pointcheval               [38] Jung Hee Cheon, Wonhee Cho, Jeong Han Kim, and Jiseung Kim. 2021. Ad-
+     and Thomas Johansson (Eds.). Springer, Berlin, Heidelberg, 719–737. https:                    ventures in Crypto Dark Matter: Attacks and Fixes for Weak Pseudorandom
+     //doi.org/10.1007/978-3-642-29011-4_42                                                        Functions, See [52], 739–760. https://doi.org/10.1007/978-3-030-75248-4_26
+[15] Andrea Basso. 2022. Poster: A Post-Quantum Oblivious PRF from Isogenies, See             [39] Jung Hee Cheon, Duhyeong Kim, Joohee Lee, and Yongsoo Song. 2018. Lizard:
+     [76], 3327–3329. https://doi.org/10.1145/3548606.3563542                                      Cut Off the Tail! A Practical Post-quantum Public-Key Encryption from LWE
+[16] Andrea Basso. 2024. POKE: A Framework for Efficient PKEs, Split KEMs, and                     and LWR, See [35], 160–177. https://doi.org/10.1007/978-3-319-98113-0_9
+     OPRFs from Higher-dimensional Isogenies. Cryptology ePrint Archive, Report               [40] Ilaria Chillotti, Nicolas Gama, Mariya Georgieva, and Malika Izabachène. 2016.
+     2024/624. https://eprint.iacr.org/2024/624                                                    Faster Fully Homomorphic Encryption: Bootstrapping in Less Than 0.1 Seconds.
+[17] Andrea Basso. 2024. A Post-Quantum Round-Optimal Oblivious PRF from                           In ASIACRYPT 2016, Part I (LNCS, Vol. 10031), Jung Hee Cheon and Tsuyoshi
+     Isogenies. In SAC 2023 (LNCS, Vol. 14201), Claude Carlet, Kalikinkar Mandal, and              Takagi (Eds.). Springer, Berlin, Heidelberg, 3–33. https://doi.org/10.1007/978-3-
+     Vincent Rijmen (Eds.). Springer, Cham, 147–168. https://doi.org/10.1007/978-3-                662-53887-6_1
+     031-53368-6_8                                                                            [41] Ilaria Chillotti, Nicolas Gama, Mariya Georgieva, and Malika Izabachène. 2020.
+[18] Andrea Basso, Péter Kutas, Simon-Philipp Merz, Christophe Petit, and Antonio                  TFHE: Fast Fully Homomorphic Encryption Over the Torus. Journal of Cryptology
+     Sanso. 2021. Cryptanalysis of an Oblivious PRF from Supersingular Isogenies. In               33, 1 (Jan. 2020), 34–91. https://doi.org/10.1007/s00145-019-09319-x
+     ASIACRYPT 2021, Part I (LNCS, Vol. 13090), Mehdi Tibouchi and Huaxiong Wang              [42] Ivan Damgård. 1990. On the Randomness of Legendre and Jacobi Sequences. In
+     (Eds.). Springer, Cham, 160–184. https://doi.org/10.1007/978-3-030-92062-3_6                  CRYPTO’88 (LNCS, Vol. 403), Shafi Goldwasser (Ed.). Springer, New York, 163–172.
+[19] Donald Beaver. 1995. Precomputing Oblivious Transfer. In CRYPTO’95 (LNCS,                     https://doi.org/10.1007/0-387-34799-2_13
+     Vol. 963), Don Coppersmith (Ed.). Springer, Berlin, Heidelberg, 97–109. https:           [43] Jan-Pieter D’Anvers, Angshuman Karmakar, Sujoy Sinha Roy, and Frederik
+     //doi.org/10.1007/3-540-44750-4_8                                                             Vercauteren. 2018. Saber: Module-LWR Based Key Exchange, CPA-Secure En-
+[20] Daniel J. Bernstein, Chitchanok Chuengsatiansup, Tanja Lange, and Christine                   cryption and CCA-Secure KEM. In Progress in Cryptology - AFRICACRYPT 2018 -
+     van Vredendaal. 2017. NTRU Prime: Reducing Attack Surface at Low Cost. In                     10th International Conference on Cryptology in Africa, Marrakesh, Morocco, May
+     SAC 2017 (LNCS, Vol. 10719), Carlisle Adams and Jan Camenisch (Eds.). Springer,               7-9, 2018, Proceedings (Lecture Notes in Computer Science, Vol. 10831), Antoine
+     Cham, 235–260. https://doi.org/10.1007/978-3-319-72565-9_12                                   Joux, Abderrahmane Nitaj, and Tajjeeddine Rachidi (Eds.). Springer, 282–305.
+[21] Ward Beullens, Lucas Dodgson, Sebastian Faller, and Julia Hesse. 2025. The 2Hash              https://doi.org/10.1007/978-3-319-89339-6_16
+     OPRF Framework and Efficient Post-Quantum Instantiations. Springer-Verlag.               [44] Alex Davidson, Armando Faz-Hernández, Nick Sullivan, and Christopher A.
+[22] Ward Beullens and Gregor Seiler. 2023. LaBRADOR: Compact Proofs for R1CS                      Wood. 2023. Oblivious Pseudorandom Functions (OPRFs) Using Prime-Order
+     from Module-SIS, See [53], 518–548. https://doi.org/10.1007/978-3-031-38554-                  Groups. RFC 9497 (2023), 1–61. https://doi.org/10.17487/RFC9497
+     4_17                                                                                     [45] Alex Davidson, Ian Goldberg, Nick Sullivan, George Tankersley, and Filippo
+[23] Andrej Bogdanov, Siyao Guo, Daniel Masny, Silas Richelson, and Alon Rosen.                    Valsorda. 2018. Privacy Pass: Bypassing Internet Challenges Anonymously.
+     2016. On the Hardness of Learning with Rounding over Small Modulus. In                        PoPETs 2018, 3 (July 2018), 164–180. https://doi.org/10.1515/popets-2018-0026
+     TCC 2016-A, Part I (LNCS, Vol. 9562), Eyal Kushilevitz and Tal Malkin (Eds.).            [46] Alex Davidson, Peter Snyder, E. B. Quirk, Joseph Genereux, Benjamin Livshits,
+     Springer, Berlin, Heidelberg, 209–224. https://doi.org/10.1007/978-3-662-49096-               and Hamed Haddadi. 2022. STAR: Secret Sharing for Private Threshold Aggrega-
+     9_9                                                                                           tion Reporting, See [76], 697–710. https://doi.org/10.1145/3548606.3560631
+[24] Andrej Bogdanov and Alon Rosen. 2017. Pseudorandom Functions: Three                      [47] Cyprien Delpech de Saint Guilhem and Robi Pedersen. 2024. New Proof Systems
+     Decades Later. Cryptology ePrint Archive, Report 2017/652. https://eprint.                    and an OPRF from CSIDH. In PKC 2024, Part II (LNCS, Vol. 14603), Qiang Tang and
+     iacr.org/2017/652                                                                             Vanessa Teague (Eds.). Springer, Cham, 217–251. https://doi.org/10.1007/978-3-
+[25] Dan Boneh, Yuval Ishai, Alain Passelègue, Amit Sahai, and David J. Wu. 2018. Ex-              031-57725-3_8
+     ploring Crypto Dark Matter: New Simple PRF Candidates and Their Applications.
+                                                                                         13
+                                                                                                                            Alex Davidson, Amit Deo, and Louis Tremblay Thibault
+
+
+[48] Amit Deo, Marc Joye, Benoit Libert, Benjamin R. Curtis, and Mayeul de Bellabre.                 //doi.org/10.1007/978-3-031-38554-4_26
+     2024. Homomorphic Evaluation of LWR-based PRFs and Application to Transci-                 [71] Lance Roy Peter Rindal. 2025. libOTe: an efficient, portable, and easy to use
+     phering. Cryptology ePrint Archive, Report 2024/665. https://eprint.iacr.org/                   Oblivious Transfer Library. https://github.com/osu-crypto/libOTe.
+     2024/665                                                                                   [72] Benny Pinkas, Mike Rosulek, Ni Trieu, and Avishay Yanai. 2020. PSI from PaXoS:
+[49] Itai Dinur, Steven Goldfeder, Tzipora Halevi, Yuval Ishai, Mahimna Kelkar, Vivek                Fast, Malicious Private Set Intersection. In EUROCRYPT 2020, Part II (LNCS,
+     Sharma, and Greg Zaverucha. 2021. MPC-Friendly Symmetric Cryptography                           Vol. 12106), Anne Canteaut and Yuval Ishai (Eds.). Springer, Cham, 739–767.
+     from Alternating Moduli: Candidates, Protocols, and Applications, See [65],                     https://doi.org/10.1007/978-3-030-45724-2_25
+     517–547. https://doi.org/10.1007/978-3-030-84259-8_18                                      [73] Oded Regev. 2005. On lattices, learning with errors, random linear codes, and
+[50] Muhammed F. Esgin, Ron Steinfeld, Erkan Tairi, and Jie Xu. 2024. LeOPaRd:                       cryptography. In 37th ACM STOC, Harold N. Gabow and Ronald Fagin (Eds.).
+     Towards Practical Post-Quantum Oblivious PRFs via Interactive Lattice Problems.                 ACM Press, 84–93. https://doi.org/10.1145/1060590.1060603
+     Cryptology ePrint Archive, Paper 2024/1615. https://eprint.iacr.org/2024/1615              [74] Nirvan Tyagi, Sofía Celi, Thomas Ristenpart, Nick Sullivan, Stefano Tessaro, and
+[51] Michael J. Freedman, Kobbi Nissim, and Benny Pinkas. 2004. Efficient Private                    Christopher A. Wood. 2022. A Fast and Simple Partially Oblivious PRF, with
+     Matching and Set Intersection. In EUROCRYPT 2004 (LNCS, Vol. 3027), Christian                   Applications. In EUROCRYPT 2022, Part II (LNCS, Vol. 13276), Orr Dunkelman
+     Cachin and Jan Camenisch (Eds.). Springer, Berlin, Heidelberg, 1–19. https:                     and Stefan Dziembowski (Eds.). Springer, Cham, 674–705. https://doi.org/10.
+     //doi.org/10.1007/978-3-540-24676-3_1                                                           1007/978-3-031-07085-3_23
+[52] Juan Garay (Ed.). 2021. PKC 2021, Part II. LNCS, Vol. 12711. Springer, Cham.               [75] Yibin Yang, Fabrice Benhamouda, Shai Halevi, Hugo Krawczyk, and Tal Rabin.
+[53] Helena Handschuh and Anna Lysyanskaya (Eds.). 2023. CRYPTO 2023, Part V.                        2024. Gold OPRF: Post-Quantum Oblivious Power Residue PRF. IACR Cryptol.
+     LNCS, Vol. 14085. Springer, Cham.                                                               ePrint Arch. (2024), 1955. https://eprint.iacr.org/2024/1955
+[54] Lena Heimberger, Tobias Hennerbichler, Fredrik Meisingseth, Sebastian Ra-                  [76] Heng Yin, Angelos Stavrou, Cas Cremers, and Elaine Shi (Eds.). 2022. ACM CCS
+     macher, and Christian Rechberger. 2024. OPRFs from Isogenies: Designs and                       2022. ACM Press.
+     Analysis. In ASIACCS 24, Jianying Zhou, Tony Q. S. Quek, Debin Gao, and Al-                [77] Zama. 2022. TFHE-rs: A Pure Rust Implementation of the TFHE Scheme for
+     varo A. Cárdenas (Eds.). ACM Press. https://doi.org/10.1145/3634737.3645010                     Boolean and Integer Arithmetics Over Encrypted Data. https://github.com/zama-
+[55] Lena Heimberger, Daniel Kales, Riccardo Lolato, Omid Mir, Sebastian Ramacher,                   ai/tfhe-rs.
+     and Christian Rechberger. 2025. LEAP: A Fast, Lattice-based OPRF with Applica-
+     tion to Private Set Intersection. Springer-Verlag.
+[56] Yuval Ishai, Joe Kilian, Kobbi Nissim, and Erez Petrank. 2003. Extending Oblivious
+                                                                                                A     COMPARISON WITH MALICIOUS OPRFS
+     Transfers Efficiently. In CRYPTO 2003 (LNCS, Vol. 2729), Dan Boneh (Ed.). Springer,        In Table 1, we compared with OPRF protocols that only target
+     Berlin, Heidelberg, 145–161. https://doi.org/10.1007/978-3-540-45146-4_9
+[57] Stanislaw Jarecki, Aggelos Kiayias, and Hugo Krawczyk. 2014. Round-Optimal
+                                                                                                semi-honest security by design. However, malicious OPRFs can be
+     Password-Protected Secret Sharing and T-PAKE in the Password-Only Model. In                assumed to be semi-honest, if we simply remove non-interactive
+     ASIACRYPT 2014, Part II (LNCS, Vol. 8874), Palash Sarkar and Tetsu Iwata (Eds.).           mechanisms for committing to and proving certain actions, that
+     Springer, Berlin, Heidelberg, 233–253. https://doi.org/10.1007/978-3-662-45608-
+     8_13                                                                                       ensure the correct functioning of the protocol under arbitrary ad-
+[58] Stanislaw Jarecki, Aggelos Kiayias, Hugo Krawczyk, and Jiayu Xu. 2016. Highly-             versarial attacks. Therefore, to avoid missing comparisons with
+     Efficient and Composable Password-Protected Secret Sharing (Or: How to Protect             schemes that may be efficient in the semi-honest paradigm, we in-
+     Your Bitcoin Wallet Online). In 2016 IEEE European Symposium on Security and
+     Privacy. IEEE Computer Society Press, 276–291. https://doi.org/10.1109/EuroSP.             clude Table 6. This table documents the costs of such protocols after
+     2016.30                                                                                    removing zero-knowledge proofs and other extraneous material
+[59] Stanislaw Jarecki, Hugo Krawczyk, and Jiayu Xu. 2018. OPAQUE: An Asymmet-
+     ric PAKE Protocol Secure Against Pre-computation Attacks. In EUROCRYPT 2018,
+                                                                                                that is necessary for achieving malicious security, and compares
+     Part III (LNCS, Vol. 10822), Jesper Buus Nielsen and Vincent Rijmen (Eds.).                performance with Pool. We note that the state-of-the-art, prior to
+     Springer, Cham, 456–486. https://doi.org/10.1007/978-3-319-78372-7_15                      Pool, for lattice-based OPRFs in the semi-honest paradigm remains
+[60] Stanislaw Jarecki and Xiaomin Liu. 2009. Efficient Oblivious Pseudorandom
+     Function with Applications to Adaptive OT and Secure Computation of Set                    LEAP [55].
+     Intersection. In TCC 2009 (LNCS, Vol. 5444), Omer Reingold (Ed.). Springer, Berlin,
+     Heidelberg, 577–594. https://doi.org/10.1007/978-3-642-00457-5_34
+[61] Vladimir Kolesnikov, Ranjit Kumaresan, Mike Rosulek, and Ni Trieu. 2016.
+                                                                                                B     SILENT OT PERFORMANCE TRADE-OFFS
+     Efficient Batched Oblivious PRF with Applications to Private Set Intersec-                 In Table 2, we addressed the issue that libOTe only allows sender
+     tion. In ACM CCS 2016, Edgar R. Weippl, Stefan Katzenbeisser, Christopher                  strings with a maximum length of 128 bits whereas the first phase
+     Kruegel, Andrew C. Myers, and Shai Halevi (Eds.). ACM Press, 818–829. https:                                              
+     //doi.org/10.1145/2976749.2978381                                                          requires 𝑛 independent 21 -OTs with sender strings of length 𝜏 ·
+[62] Vladimir Kolesnikov, Mike Rosulek, Ni Trieu, and Xiao Wang. 2019. Scalable                 log(𝑞). There are two ways to overcome this. The first is to expand
+     Private Set Union from Symmetric-Key Techniques. In ASIACRYPT 2019, Part II
+     (LNCS, Vol. 11922), Steven D. Galbraith and Shiho Moriai (Eds.). Springer, Cham,           libOTe’s 128-bit outputs using a PRNG. We refer to this strategy
+     636–666. https://doi.org/10.1007/978-3-030-34621-8_23                                      as “Silent OT (𝑛 OTs)” in Table 7. This method is also used in
+[63] Hanjun Li, Sela Navot, and Stefano Tessaro. 2024. POPSTAR: Lightweight Thresh-             Tables 2 and 4. A second method is to replace 𝑛 OTs with sender
+     old Reporting with Reduced Leakage. In USENIX Security 2024, Davide Balzarotti
+     and Wenyuan Xu (Eds.). USENIX Association.                                                 strings of length 𝜏 · log(𝑞) by 𝑛 · 𝜅 OTs of sender length 𝜏 · log(𝑞)/𝜅.
+[64] Lucy Li, Bijeeta Pal, Junade Ali, Nick Sullivan, Rahul Chatterjee, and Thomas              For this latter method, one can set the parameter 𝜅 so that 𝜏 ·
+     Ristenpart. 2019. Protocols for Checking Compromised Credentials, See [36],
+     1387–1403. https://doi.org/10.1145/3319535.3354229
+                                                                                                log(𝑞)/𝜅 < 128. To do so, we choose 𝜅 = ⌈𝜏 ·log(𝑞)/128⌉. In order to
+[65] Tal Malkin and Chris Peikert (Eds.). 2021. CRYPTO 2021, Part IV. LNCS, Vol. 12828.         implement this second method, the preprocessing phase must send
+     Springer, Cham, Virtual Event.                                                             𝑛 · 𝜅 correction bits in {𝑏¯𝑖 }𝑛𝜅 −1
+[66] Daniel Masny and Peter Rindal. 2019. Endemic Oblivious Transfer, See [36],                                                𝑖=0 which adds to the communication
+     309–326. https://doi.org/10.1145/3319535.3354210                                           costs of preprocessing. We refer to this second strategy as “Silent
+[67] Thibault Meunier. 2023. Evolution of Privacy Pass at Cloudflare. (2023). USENIX            OT (𝑛 · 𝜅 OTs)” in Table 7.
+     PEPR.                                                                                          The “Silent OT (𝑛 · 𝜅 OTs)”-method is more bandwidth-intensive,
+[68] Dimitris Mouris, Daniel Masny, Ni Trieu, Shubho Sengupta, Prasad Bud-
+     dhavarapu, and Benjamin M. Case. 2024. Delegated Private Matching For Com-                 but reduces computation time as no PRNG expansion takes place.
+     pute. PoPETs 2024, 2 (April 2024), 49–72. https://doi.org/10.56553/popets-2024-            This gives additional flexibility for implementing Pool from Silent
+     0040
+[69] Moni Naor and Benny Pinkas. 1999. Oblivious Transfer and Polynomial Evalua-
+                                                                                                OT, depending on which performance measure is important for
+     tion. In 31st ACM STOC. ACM Press, 245–254. https://doi.org/10.1145/301250.                the application. In Table 2, we are more interested in optimizing
+     301312                                                                                     communication to be as competitive with Leap as possible, and so
+[70] Parker Newton and Silas Richelson. 2023. A Lower Bound for Proving Hardness
+     of Learning with Rounding with Polynomial Modulus, See [53], 805–835. https:               we only quote the numbers from the 𝑛 OTs variant.
+
+
+                                                                                           14
+Pool: A Practical OT-based OPRF from Learning with Rounding
+
+
+
+                        Construction              Assumption                                          Online Rounds               Preprocessing                    Online comms.
+                PQ 2HashDH [21]                   Legendre PRF                                                             9                ✗                            590KB
+                PQ 2HashDH [21]                   Legendre PRF                                                            2*               ✓                             198KB
+                            [54]                  Isogenies F𝑝 + lattices                                                  2                ✗                             21KB
+                            [54]                  Isogenies F𝑝 + lattices                                                  4                ✗                             35KB
+                            [47]                  Isogenies F𝑝                                                             2               ✗**                           16.4KB
+                    LeOPaRd [50]                  iMLWE-RU, MLWE, MSIS                                                     2                ✗                84.4KB / 29KB† ***
+                             [4]                  FHE, Alternating Moduli [25]                                             2                ✗                 4.1KB / 8.2KB****
+                             [6]                  RLWE, SIS                                                                2                ✗                            70.3KB
+                  Gold OPRF [75]                  Legendre PRF                                                             2               ✓                     774KB / 100B†
+                                      Pool        Binary LWR (100 bits sec.)                                                2               ✓                                    9.2KB
+                                      Pool        Binary LWR (128 bits sec.)                                                2               ✓                                   11.9KB
+
+Table 6: Brief comparison of Pool with malicious OPRF constructions (without quantum cryptanalysis and for security levels
+of 100 bits, or higher), interpreted in the semi-honest regime (e.g. bandwidth associated with ZK proofs/commitments are
+removed). † Communication value corresponds to a batched evaluation setting, where costs of a single query are amortized over
+the total batch size. *All key-/input-independent messages (i.e. all messages apart from the last two of [21, Fig. 13]) are counted
+as preprocessing here. **The scheme utilizes a trusted setup, but it is suggested that using preprocessing allows removing
+the trusted setup. ***Parameters derived from [50, Tab. 4], with correctness parameter 2 −𝜅 = 2 −64 . ****The client sends a
+bootstrapping key of size 14.7MB for the first value, and 2.4MB for the second, during a one-time setup.
+
+
+
+      𝑝,ℓ                                                                                                    𝑞,𝜏,ℓ
+    FΔ            interacts with a sender S and a receiver R (and possibly an                              F2            interacts with a sender S and a receiver R (and possibly an
+      ( 1 ) -rOT                                                                                             ( 1 ) -rOT
+    actively malicious sender S∗ and receiver R∗ ).                                                        actively malicious sender S∗ and receiver R∗ ).
+           (1) On input (Receive, rec, uid) from R; if no message of the                                           (1) On input (Receive, rec, uid) from R; if no message of the form
+                 form (rec, uid, b) has been recorded, sample b ←$ ZℓΔ , store                                          (rec, uid, b) has been recorded, sample b ←$ {0, 1} ℓ , store
+                 (rec, uid, b) and send (rec, uid) to S and (b, uid) to R.                                              (rec, uid, b) and send (rec, uid) to S and (b, uid) to R.
+           (2) On input (Send, sen, uid) from S; if no message of the form                                         (2) On input (Send, sen, uid) from S; if no message of the form
+                 (sen, uid, (a0 , a1 ) ) is recorded and a message of the form                                          (sen, uid, (a0 , a1 ) ) is recorded and a message of the form
+                 (rec, uid, b) is stored, sample a0 := (𝑎 0,1 , . . . , 𝑎 0,ℓ ), a1 :=                                  (rec, uid, b) is stored, sample a0 := (𝑎 0,1 , . . . , 𝑎 0,ℓ ), a1 :=
+                 (𝑎 1,1 , . . . , 𝑎 1,ℓ ) where each 𝑎𝑖,𝑗 ←$ Z𝑝 , store (sen, uid, (a0 , a1 ) )                         (𝑎 1,1 , . . . , 𝑎 1,ℓ ) where each 𝑎𝑖,𝑗 ←$ Z𝜏𝑞 , store (sen, uid, (a0 , a1 ) )
+                 in memory and send (sent, uid, (b, (𝑎𝑏𝑖 ,𝑖 )𝑖=1                  ℓ ) ) to R and
+                                                                                                                        in memory and send (sent, uid, (b, (𝑎𝑏𝑖 ,𝑖 )𝑖=1                  ℓ ) ) to R and
+
+                 (sent, uid, (a0 , a1 ) ) to S. Ignore future messages with the same                                    (sent, uid, (a0 , a1 ) ) to S. Ignore future messages with the same
+                 uid.                                                                                                   uid.
+           (3) On input (Receive∗ , rec, uid, b) from R∗ where b ∈ ZℓΔ ; if                                        (3) On input (Receive∗ , rec, uid, b) from R∗ where b ∈ {0, 1} ℓ ; if
+                 no message of the form (rec, uid, b) has been recorded, store                                          no message of the form (rec, uid, b) has been recorded, store
+                 (rec, uid, b) and send (rec, uid) to S and (b, uid) to R.                                              (rec, uid, b) and send (rec, uid) to S and (b, uid) to R.
+           (4) On input (Send∗ , sen, uid, (a0 , a1 ) ) from S∗ where a0 =                                         (4) On input (Send∗ , sen, uid, (a0 , a1 ) ) from S∗ where a0 =
+                 (𝑎 0,1 , . . . , 𝑎 0,ℓ ), a1 = (𝑎 1,1 , . . . , 𝑎 1,ℓ ) for 𝑎𝑖,𝑗 ∈ Z𝑝 ; if no mes-                     (𝑎 0,1 , . . . , 𝑎 0,ℓ ), a1 = (𝑎 1,1 , . . . , 𝑎 1,ℓ ) for 𝑎𝑖,𝑗 ∈ Z𝜏𝑞 ; if no mes-
+                 sage of the form (sen, uid, (a0′ , a1′ ) ) is recorded but a message of                                sage of the form (sen, uid, (a0′ , a1′ ) ) is recorded but a message of
+                 the form (rec, uid, b) is stored, send (sent, uid, (b, (𝑎𝑏𝑖 ,𝑖 )𝑖=1           ℓ ))
+                                                                                                                        the form (rec, uid, b) is stored, send (sent, uid, (b, (𝑎𝑏𝑖 ,𝑖 )𝑖=1            ℓ ))
+
+                 to R and (sent, uid, (a0 , a1 ) ) to S. Ignore future messages with                                    to R and (sent, uid, (a0 , a1 ) ) to S. Ignore future messages with
+                 the same uid.                                                                                          the same uid.
+
+
+Figure 5: Idealized Random OT functionalities. The sent strings in F Δ         are in Z𝑝 and the choice “bits” are in ZΔ . In F 2        ,
+                                                                                                               𝑝,ℓ                                                                                   𝑞,𝜏,ℓ
+                                                                    ( 1 ) -rOT                                                 ( 1) -rOT
+the sent strings are in Z𝑞 and the choice values are bits.
+                         𝜏
+
+
+
+C     RANDOM OT                                                                                            functionalities, the Send∗ and Receive∗ will not be considered in
+The formal definition of the random OT-functionalities that Pool                                           any of our full security proofs. This is because such messages are
+is designed from are given in Figure 5. These are simply special                                           only sent by actively malicious adversaries. However, we leave
+parametrizations of the Random OT functionality written in [33].                                           these in the description of the functionalities as they become useful
+Since we will be assuming semi-honest adversaries against these                                            when considering malicious security.
+
+                                                                                                      15
+                                                                                                                          Alex Davidson, Amit Deo, and Louis Tremblay Thibault
+
+
+  2
+  1 -OT extension      (𝑛, 𝑝, 𝑞)      # evals   𝜏      Communication     Computation            D.2      Semi-Honest Client Proof
+                                                       Client Server     Client Server
+                                        20      25     792 kB   792 kB   108 ms   107 ms
+                                                                                                   Proof. (Of Theorem 5.2) We step through the sequence of games
+                    (415, 24, 28 )
+  Silent OT [29]                        213     218    926 kB   1.9 MB    2.8 s    4.7 s        following the high-level overview included in the main body.
+    (𝑛 · 𝜅 OTs)
+                    (482, 28, 212 )
+                                        20      24     800 kB   795 kB   95 ms    94 ms               𝐺 0 : This is the SH-PPOPRF A,0 F,Sim,RO
+                                                                                                                                                (𝜆) game with Sim de-
+                                        213     217    924 kB   1.6 MB    2.1 s    3.6 s
+                                                                                                          scribed by the unhighlighted pseudocode in Figure 6.
+                                        20      25     792 kB   792 kB   154 ms   154 ms
+                    (415, 24, 28 )
+  Silent OT [29]                        213     218    815 kB   887 kB    8.6 s    8.3 s              𝐺 1 : This is 𝐺 0 apart from the change highlighted in gray.
+      (𝑛 OTs)
+                    (482, 28, 212 )
+                                        20      24     792 kB   792 kB   176 ms   176 ms                  In particular, the random function ROFn which takes in-
+                                        213     217    813 kB   879 kB     7s       7s
+                                                                                                          puts (𝑡, 𝑥) ∈ F .T × F .In is replaced by the LWR func-
+Table 7: Preprocessing performance for alternative imple-                                                 tion ⌈Sim.Eval(𝑡, 𝑥) ⊤ skSim ⌋𝑞,𝑝 . By Lemma D.1, we have
+mentations of Silent OT.                                                                                                                              LWR
+                                                                                                                                                            {0,1}
+                                                                                                          | Pr[𝐺 0 ⇒ 1] − Pr[𝐺 1 ⇒ 1]| ≤ Adv B n,p,q (𝜆) for some
+                                                                                                          PPT adversary B if RO behaves like a random oracle.
+                                                                                                      𝐺 2 : This is 𝐺 1 apart from that during Sim.PreProc, the call
+D DEFERRED PROOFS                                                                                         to F .PreProc takes input skSim instead of 0 as highlighted
+D.1 Correctness                                                                                           in yellow. Looking closely at F .PreProc(skSim ) in Figure 3
+   Proof. Take any GstS , inputs (𝑡 𝑗 , 𝑥 𝑗 )𝜏𝑗=1 and pk, sk in the out-                                  and using the same notation, the input sk is only used in
+                                                                                                          the computation of 𝑏¯𝑖 ← 𝑏𝑖 ⊕ sk𝑖 . However, the client’s
+put space of F .PK × F .SK. Calling PreProc(sk) yields a state stC
+                                                                                                          view during preprocessing i.e., stC is independent of 𝑏𝑖
+and stS where the latter is added to GstS . Throughout, we use the                                                        𝑞,𝜏,𝑛
+                                                                                                          due to the F 2           functionality. Further, the entire view
+state notation explicit in Figure 4. We now show for 𝑗 = 1, . . . , 𝜏,                                                   ( 1) -rOT
+that the 𝑧 𝑗 ’s calculated after running F .Request, F .BlindEval and                                     of A (with respect to all oracle responses computed by
+F .Finalize on (𝑡 𝑗 , 𝑥 𝑗 ) satisfy 𝑧 𝑗 = F .Eval(sk, 𝑡 𝑗 , 𝑥 𝑗 ) as required by                          Sim) is independent of 𝑏𝑖 which means that 𝑏¯𝑖 is uniformly
+the 𝜏-correctness definition (Definition 3.2). As the same client state                                   distributed from A’s perspective. Therefore, 𝑏𝑖 serves as
+is used throughout, uid remains unchanged throughout this proof.                                          a one-time pad that hides sk𝑖 during preprocessing. Using
+   For 𝑗 = 1, we have that the value of ctr in stC gets set to 1 during                                   this argument over all calls to Sim.PreProc(), we arrive at
+its F .Request(𝑡 1, 𝑥 1 ) call. During this call, elements 𝑟𝑖 are defined                                 Pr[𝐺 2 ⇒ 1] = Pr[𝐺 1 ⇒ 1].
+and the vector e = (𝑒 1, . . . , 𝑒𝑛 ) is calculated inside the loop over                              𝐺 3 : This is 𝐺 2 , apart from a change in the computation of 𝑦𝑖
+𝑖 ∈ [𝑛]. The ultimate request takes the form req1 = (𝑡 1, e, 𝑏¯′, uid)                                    during Sim.BlindEval highlighted in orange in Figure 6. In
+where uid tells the server which part of its GstS to use for its                                          particular, for 𝑖 ∈ [0, Δ − 1] \ {𝑟 Σ mod Δ},
+response. Additionally, C stores st1fin = ((uid, ctr), 𝑟 Σ , 𝑟𝑏′ ′ ) for later.
+                                                                           ctr                          𝑦𝑖 ←⌈Sim.Eval(𝑡, 𝑥) ⊤ skSim + 𝑟 Σ − 𝑖 mod 𝑞⌋𝑞,𝑝
+   Next we consider the call F .BlindEval(sk, 𝑡 1, req1 ; GstS ) that
+                                                                                                                                           + 𝑟 ′ ¯′                 mod 𝑝   (3)
+computes a response for 𝑗 = 1. Since for every 𝑖 = 1, . . . , 𝑛, GstS                                                                         𝑖 −𝑏 mod Δ,ctr
+contains 𝑟𝑏1 ,𝑖 for some 𝑏𝑖 ∈ {0, 1}, we can show that 𝑎˜𝑖,sk𝑖 = 𝑎𝑖 ·sk𝑖 +
+            𝑖
+                                                                                                         for 𝑏¯′ ∈ [0, Δ−1] used in the request message. We now note
+𝑟𝑖 where 𝑟𝑖 was defined during the F .Request(pk, 𝑡 1, 𝑥 1 ; stC ) call.                                 from Figure 3 that {𝑟𝑏′ ′ ,𝑖 }𝜏𝑖=1 is saved as part of stC whereas
+                                                                                                                                  𝑖
+To see why, recall that 𝑏¯𝑖 = sk𝑖 ⊕𝑏𝑖 from preprocessing. So if sk𝑖 = 0,                                   ′
+                                                                                                         𝑅hidden       ′ : 𝑘 ∈ [0, Δ − 1] \ {𝑏 ′ }}𝜏 are uniformly
+                                                                                                                  := {𝑟𝑘,𝑖                         𝑖 𝑖=1
+we have 𝑎˜𝑖,sk𝑖 = 𝑟𝑏1 ,𝑖 = 𝑟𝑖 . On the other hand, if sk𝑖 = 1, 𝑎˜𝑖,sk𝑖 = 𝑎𝑖 +                            chosen values hidden from A during a preprocessing oracle
+                        𝑖
+𝑟𝑖 +𝑟 1     −𝑟 1 = 𝑎𝑖 +𝑟𝑖 . Therefore, 𝑎˜𝑖 = 𝑎˜sk,𝑖 = 𝑎𝑖 ·sk𝑖 +𝑟𝑖 , implying                             query, thanks to the F Δ
+                                                                                                                                  𝑝,ℓ
+                                                                                                                                            functionality. The only time
+    sk𝑖 ⊕𝑏¯𝑖 𝑏𝑖 ,𝑖
+                                                                                                                                 ( 1 ) -rOT
+that 𝑎˜ Σ = a⊤ · sk + 𝑟 Σ . It follows that the response rep1 consists of                                  ′
+                                                                                                         𝑅hidden is used in A’s oracle queries is when 𝑦𝑖 is computed
+elements of the form 𝑦𝑖 = ⌈a⊤ sk +𝑟 Σ −𝑖⌋𝑞,𝑝 +𝑟 ′ ¯′ for 𝑖 ∈ [0, Δ − 1].
+                                                    𝑖 −𝑏                                                 according to (3). Therefore, the 𝑦𝑖 ’s computed in 𝐺 3 remain
+In particular, we write rep1 = ((𝑦0, . . . , 𝑦 Δ−1 ), uid, ctr).                                         uniformly distributed from A’s perspective since the uni-
+   During F .Finalize(rep1, st1fin ), the client retrieves 𝑟 Σ that was                                                                       ′
+                                                                                                         formly distributed elements of 𝑅hidden     are used as one-time
+calculated during req1 and 𝑟 = 𝑟𝑏′ ′ . We now write 𝑟 Σ = 𝑘 · Δ +                                        pads in (3). Applying this argument over all Sim.BlindEval
+                                                 ctr
+                  𝑟 Σ − (𝑟 Σ mod Δ)                                                                      queries made by A, we have Pr[𝐺 3 ⇒ 1] = Pr[𝐺 2 ⇒ 1].
+𝑟 Σ mod Δ for 𝑘 =           Δ        ∈ Z. It then computes
+                                    ⊤                                                                 𝐺 4 : This final game is precisely SH-PPOPRF A,1              (𝜆). It is
+        𝑦 ← 𝑦𝑟 Σ mod Δ − 𝑟 = ⌈a sk + 𝑟 Σ − (𝑟 Σ mod Δ)⌋𝑞,𝑝                                                                                                 F,Sim,RO
+                                                                                                          immediately clear that the behavior of Sim in 𝐺 3 implies
+                              = ⌈a⊤ sk + 𝑘 · Δ mod 𝑞⌋𝑞,𝑝                                                  that oracles Eval, PreProc, LimitEval, Prim compute their
+                              = ⌈a⊤ sk⌋𝑞,𝑝 + 𝑘.                                                           outputs identically to those same oracles in 𝐺 4 . This fol-
+                                                           ′ = 𝑟 −                                        lows easily from the fact that (sk, pp1 ) and (skSim, pp0 )
+The first equality follows by virtue of the fact that 𝑏 ctr     Σ
+                                                                                                          are identically distributed and the instructions defining
+𝑏 mod Δ, the second by definition of 𝑘 and the third by the fact
+¯′
+                                                                                                          (Sim.PreProc, Sim.Eval, Eval) in 𝐺 3 are identical to those
+that Δ = 𝑞/𝑝 ∈ Z. Since the output of finalize subtracts 𝑘 from 𝑦, it
+                                                                                                          defining (F .PreProc, RO, Eval) in 𝐺 4 where RO is assumed
+follows that 𝑧 1 = F .Eval(sk, 𝑡 1, 𝑥 1 ).
+                                                                                                          to behave as a random oracle. What is left is to show that the
+    As the counter ctr in states stC and stS with respect to uid
+                                                                                                          behavior of Sim.BlindEval in 𝐺 3 is identical to F .BlindEval
+remain synchronized, it follows by an identical argument that
+                                                                                                          in 𝐺 4 . Take any (𝑡, 𝑥, req) and stC . In 𝐺 4 , we have that 𝑎˜ Σ
+𝑧 𝑗 = F .Eval(sk, 𝑡 𝑗 , 𝑥 𝑗 ) for 𝑗 ∈ [2, 𝜏] which completes the proof. □
+
+                                                                                           16
+Pool: A Practical OT-based OPRF from Learning with Rounding
+
+
+
+ Sim.Init(pp1 )                                          Sim.BlindEvalLimitEval (𝑡, 𝑥, req; GstSim )                                                Lemma D.1. For any PPT adversary A, there exists a PPT adversary
+                                                                                                                                                                                                LWR
+ Parse pp1 = (𝑛, 𝑝, 𝑞, 𝜏 )                               Parse req = (𝑡, (𝑒 1 , . . . , 𝑒𝑛 ), 𝑏¯′ , uid)                                          B such that | Pr[𝐺 0 ⇒ 1] − Pr[𝐺 1 ⇒ 1]| = Adv B n,p,q (𝜆).
+ GstSim .C, GstSim .S ← ⊥, ⊥                             if  stC ∈ GstC with uid then return ⊥
+ GstSim .RO ← ⊥                                          Parse stC = (𝑆 C , 𝑅C , {𝑏¯𝑖 }, (uid, ctr) )                                                 Proof. We describe a PPT algorithm B that attempts to distin-
+ GstSim .sk ←$ {0, 1}    𝑛
+                                                                where 𝑆 C := { (𝑟 0,𝑖 , 𝑟 1,𝑖 ) } and 𝑅C := { (𝑏 ′𝑗 , 𝑟𝑏′ ′ ,𝑗 ) }
+                                                                                       𝑗           𝑗
+                                                                                                                           𝑗
+                                                                                                                                                  guish between an oracle O0 that returns uniform samples (a, 𝑏) ∈
+                                                                                                                                                  Z𝑞𝑛 ×Z𝑝 and an oracle O1 that returns LWR𝑛,𝑝,𝑞 samples (a, ⌈a⊤ s⌋𝑞,𝑝 )
+ pk0 ← ⊥
+                                                         if ctr ≥ 𝜏 then return ⊥
+ pp1 = (𝑛, 𝑝, 𝑞, 𝜏, 𝜆)
+ return GstSim , pk0 , pp0
+                                                         ctr ← ctr + 1
+                                                         (𝑎 1 , . . . , 𝑎𝑛 ) ← Sim.Eval(𝑡, 𝑥; GstSim )
+                                                                                                                                                  where a∼𝑈 (Z𝑞𝑛 ) are freshly sampled and s∼𝑈 ({0, 1}𝑛 ) is reused
+                                                         for 𝑖 ∈ [𝑛] :                                                                            across all queries. For 𝑏 ∈ {0, 1}, B will perfectly simulate 𝐺𝑏 if it
+ Sim.PreProc(pp0 ; GstSim )
+                                                            𝑟𝑖 ← 𝑟𝑏ctr
+                                                                   ¯ ,𝑖
+                                                                      𝑖
+                                                                                       / recompute 𝑟𝑖 used in req                                 has oracle access to O𝑏 .
+ Parse pp0 = (𝑛, 𝑝, 𝑞, 𝜏, 𝜆)
+ (stC , stS ) ← F.PreProcpp0 (0 )  𝑛
+                                       / uses all-0 sk
+                                                         𝑟 Σ ← 𝑟 1 + · · · + 𝑟𝑛 mod 𝑞                                                                 B runs 𝐺 0 using A as a subroutine, by executing all steps hon-
+                                                                𝑟 Σ − (𝑟 Σ mod Δ)
+                                                         𝑟Δ =                       ∈ {0, . . . , 𝑝 − 1}
+ skSim ← GstSim .sk
+                                                                          Δ                                                                       estly apart from the Sim.Eval and Eval algorithms. In order to
+                                                         𝑢 ← LimitEval(𝑡, 𝑥 )
+ (stC , stS ) ← F.PreProcpp0 (skSim )
+                                                         if  stS ∈ GstSim .S with uid then return ⊥
+                                                                                                                                                  implement Sim.Eval on inputs 𝑥 ′ that have not been queried before,
+ GstSim .C ← GstSim .C∥stC
+                                                         Parse stS = (𝑆 S , 𝑅S , (uid, ctr) )                                                     B queries its challenge oracle O𝑏 to obtain (a𝑥 ′ , 𝑢𝑥 ′ ), adds (𝑥 ′, a𝑥 ′ )
+ GstSim .S ← GstSim .S∥stS
+ return stC
+                                                                                           𝑗             ′ , . . .𝑟′
+                                                                where 𝑅S = { (𝑏𝑖 , 𝑟𝑏 ,𝑖 ) }, 𝑆 S = { (𝑟 0,𝑗
+                                                                                               𝑖                   Δ−1,𝑗 ) }                      to GstSim .RO and returns a𝑥 ′ to A. Clearly, this precisely emulates
+                                                         for 𝑖 ∈ [0, Δ − 1] \ {𝑟 Σ mod Δ}                                                         Sim.Eval as the outputs are uniform values regardless of whether
+ Sim.Eval(𝑥 ′ ; GstSim )                                    𝑦𝑖 ←$ Z𝑝
+                                                                                                                                                  it is interacting with O0 or O1 . Repeated evaluations are handled
+                                                            𝑦𝑖 ← ⌈a⊤ skSim + 𝑟 Σ − 𝑖 mod 𝑞 ⌋𝑞,𝑝 + 𝑟 ′ ¯ ′
+ if ∃ (𝑥 ′ , ℎ) ∈ GstSim .RO then return ℎ
+                                                                                                                                     mod 𝑝
+                                                                                                                𝑖 −𝑏 mod Δ,ctr
+                                                         𝑦𝑟 Σ mod Δ ← 𝑢 + 𝑟 Δ + 𝑟𝑟′
+                                                                                                                                                  as described in Sim (i.e. are answered consistently). Additionally
+ else                                                                                                          mod 𝑝
+                                                                                           Σ mod Δ−𝑏 mod Δ,ctr
+                                                                                                                                                  B saves 𝑢𝑥 ′ alongside (𝑥 ′, a) for later. Now, whenever Eval(𝑥 ′ )
+                                                                                                   ¯′
+   ℎ ←$ Z𝑞𝑛                                              return (𝑦0 , . . . , 𝑦Δ−1 )
+ GstSim .RO ← GstSim .RO∥ (𝑥 ′ , ℎ)                                                                                                               is called for 𝑥 ′ of the form (𝑡, 𝑥), B simply runs its emulation of
+ return ℎ                                                Oracle Eval(𝑡, 𝑥)
+                                                                                                                                                  Sim.Eval(𝑥 ′ ), fetches 𝑢𝑥 ′ and sets 𝑧 0 ← 𝑢𝑥 ′ . The final output of B
+                                                         𝑧 0 ← ROFn .Eval( (𝑡, 𝑥 ); stFn )
+                                                                                                                                                  is set to the output of A.
+                                                         a𝑡,𝑥 ← Sim.Eval( (𝑡, 𝑥 ); GstSim )
+                                                                 ⊤ · Gst
+                                                         𝑧 0 ← ⌈a𝑡,𝑥     Sim .sk⌋ 𝑞,𝑝
+                                                                                                                                                      If B is interacting with O1 , we argue that it perfectly simulates
+                                                         𝑧 1 ← F.EvalRO
+                                                                     pp1 (sk, 𝑡, 𝑥 )
+                                                                                                                                                  𝐺 1 even though Gst.sk is not necessarily the vector s used in B’s
+                                                         return 𝑧𝑏        / 𝑏 from SH-PPOPRF game                                                 simulation of Eval. To see why, recall that in 𝐺 1 (the gray high-
+                                                                                                                                                  lighted game of Figure 6), the value of GstSim .sk is only ever used
+Figure 6: The Sim algorithms for the proof of Theorem 5.2.                                                                                        via oracle access to Eval which sets 𝑧 0 according to ⌈a⊤ s⌋𝑞,𝑝 . There-
+The original simulator algorithms are not highlighted. The                                                                                        fore, when B interacts with O1 , the view of A is independent of
+first , second and third game changes are highlighted in                                                                                          GstSim .sk and depends only on s. In particular, A’s output distribu-
+gray , yellow and orange respectively.                                                                                                            tion is identical whether GstSim .sk = s or not. Since s and GstSim .sk
+                                                                                                                                                  are identically distributed, Pr[B O1 ⇒ 1] = Pr[𝐺 1 ⇒ 1].
+                                                                                                                                                      On the other hand, if B is interacting with O0 , the values 𝑢𝑥 ′ are
+              from F .BlindEval satisfies 𝑎˜ Σ = RO(𝑡, 𝑥) ⊤ sk + 𝑟 Σ where                                                                        truly uniform values. In other words, the 𝑧 0 values used to answer
+              𝑟 Σ = 𝑟 1 + · · · + 𝑟𝑛 for the blinding factors used to produce                                                                     Eval queries are essentially random function evaluations as in 𝐺 0 .
+              req. Therefore, for sk ∈ {0, 1}𝑛 , we have ∀𝑖 ∈ [0, Δ − 1],                                                                         As a result, Pr[B O0 ⇒ 1] = Pr[𝐺 0 ⇒ 1]. We may now conclude
+              that                                                                                                                                that
+              𝑦𝑖 ← ⌈RO(𝑡, 𝑥) ⊤ sk + 𝑟 Σ − 𝑖⌋𝑞,𝑝 + 𝑟𝑖 −𝑏¯′ mod Δ,ctr mod 𝑝.                                                                         | Pr[𝐺 0 ⇒ 1] − Pr[𝐺 1 ⇒ 1]| = | Pr[B O0 ⇒ 1] − Pr[B O1 ⇒ 1] |
+              For 𝑖 ∈ [0, Δ−1] \{𝑟 Σ mod Δ}, it is clear that 𝑦𝑖 is computed                                                                      which completes the proof.                                                     □
+              identically in 𝐺 3 ’s Sim.BlindEval and 𝐺 4 ’s F .BlindEval. Now
+              for 𝑖 ∗ = 𝑟 Σ mod Δ, we can write
+                                                                                                                                                  D.3      Semi-Honest Server Proof
+ 𝑦𝑖 ∗ = ⌈RO(𝑡, 𝑥) ⊤ sk + 𝑟 Σ − 𝑖 ∗ ⌋𝑞,𝑝 + 𝑟𝑖 ∗ −𝑏¯′ mod Δ
+                                                                                                                                                     Proof. (Of Theorem 5.3) We step through the sequence of games
+        = ⌈RO(𝑡, 𝑥) ⊤ sk + (𝑟 Σ − 𝑟 Σ mod Δ)⌋𝑞,𝑝 + 𝑟𝑖 ∗ −𝑏¯′ mod Δ mod 𝑝                                                                          following the high-level overview included in the main body.
+        = ⌈ Δ1 RO(𝑡, 𝑥) ⊤ sk + 𝑟 Δ ⌉ + 𝑟𝑖 ∗ −𝑏¯′ mod Δ mod 𝑝                                                                                            𝐺 0,𝑏 : For 𝑏 ∈ {0, 1}, this is the original POPRIV1 A,𝑏              (𝜆)
+                                                                                                                                                                                                                    F,Sim,RO
+                               ⊤
+        = ⌈RO(𝑡, 𝑥) sk⌋𝑞,𝑝 + 𝑟 Δ + 𝑟𝑖 ∗ −𝑏¯′ mod Δ mod 𝑝                                                                                                    game.
+                                       𝑟 − (𝑟 mod Δ)                                                                                                    𝐺 1,𝑏 : For 𝑏 ∈ {0, 1}, this game adapts 𝐺 0 in the way that 𝑧𝑏
+         where 𝑟 Δ := Σ ΣΔ             ∈ Z. From here, it is clear that                                                                                     and 𝑧 1−𝑏 are computed during calls to Run. Specifically, 𝑧𝑏
+         the instructions of F .BlindEval and Sim.BlindEval from                                                                                            is set to F .Eval(sk, 𝑡, 𝑥 0 ) and 𝑧 1−𝑏 is set to F .Eval(sk, 𝑡, 𝑥 1 )
+         𝐺 3 produce identically distributed responses for any given                                                                                        in the cases where Run does not abort. This means that the
+         (𝑡, 𝑥, req) and stC . Therefore, 𝐺 3 and 𝐺 4 are identically dis-                                                                                  responses are no longer used to compute (𝑧𝑏 , 𝑧 1−𝑏 ). Note
+         tributed and Pr[𝐺 3 ⇒ 1] = Pr[𝐺 4 ⇒ 1].                                                                                                            that due to the description of (F .Request, F .BlindEval,
+Applying the triangle inequality yields                                                                                                                     F .Finalize), Run only aborts when the adversary asks it
+ | Pr[𝐺 0 ⇒ 1] − Pr[𝐺 4 ⇒]| ≤                                                                                                                               to run the PPOPRF on states where the counter ctr is at
+                              3                                                                                                                             least 𝜏. It then follows from the proof of 𝜏-correctness, that
+                                                                                                                LWRn,p,q
+                             ∑︁
+                                   | Pr[𝐺𝑖 ⇒ 1] − Pr[𝐺𝑖+1 ⇒ 1]| = Adv B                                                          (𝜆)                        the values (𝑧𝑏 , 𝑧 1−𝑏 ) are identical when considering 𝐺 0,𝑏
+                             𝑖=0                                                                                                                            or 𝐺 1,𝑏 . Therefore, Pr[𝐺 0,𝑏 ⇒ 1] = Pr[𝐺 1,𝑏 ⇒ 1] |.
+completing the proof.                                                                                                                  □
+                                                                                                                                             17
+                                                                                                             Alex Davidson, Amit Deo, and Louis Tremblay Thibault
+
+
+𝐺 2,𝑏 : For 𝑏 ∈ {0, 1}, this game adapts 𝐺 1,𝑏 by replacing the 𝑏¯′                         values. Since 𝑟 ctr    ctr
+                                                                                                            ¯ and 𝑟 ¯            are sampled uniformly by the
+                                                                                                            𝑏𝑖 ,𝑖      1−𝑏𝑖 ,𝑖
+    term in both req0 and req1 during Run calls by independent                                aforementioned OT functionality, it follows that (𝑒 1, . . . , 𝑒𝑛 )
+    and uniformly chosen values in ZΔ . Note that 𝑏¯′ = (𝑟 Σ mod                              is uniformly distributed from A’s perspective in 𝐺 2,𝑏 by
+    Δ)−𝑏 ctr ′ mod Δ and that (𝑏 ′ ) is uniform and independent
+                                         ctr 𝑗                                                uniformity of the unknown term. It follows that Pr[𝐺 2,𝑏 ⇒
+    of all the server states and A’s entire view of the PreProc                               1] = Pr[𝐺 3,𝑏 ⇒ 1]|.
+                                   𝑝,ℓ
+    oracle (thanks to the F Δ                  functionality). We can then         In 𝐺 3,𝑏 , the Run oracle outputs triples of the form 𝑇0 = (req0′ , rep0′ ,
+                                  ( 1 ) -rOT
+                     ¯′
+    infer that 𝑏 is uniformly distributed from A’s perspective                     𝑧 0 ) and 𝑇1 = (req1′ , rep1′ , 𝑧 1 ). In these triples, req′𝑗 is a simulated
+    in 𝐺 1,𝑏 and that Pr[𝐺 1,𝑏 ⇒ 1] = Pr[𝐺 2,𝑏 ⇒ 1]|.                              request that is independent of any input as (𝑒 1, . . . , 𝑒𝑛 , 𝑏¯′ ) are sam-
+𝐺 3,𝑏 : For 𝑏 ∈ {0, 1}, this game adapts 𝐺 2,𝑏 by freshly sampling                 pled uniformly. Further, rep𝑖′ is just an honestly computed response
+    (𝑒 1, . . . , 𝑒𝑛 ) ←$ Z𝑞𝑛 every time F .Request is run during calls            using a state known to A, and 𝑧 𝑗 = F .Eval(sk, 𝑡, 𝑥 𝑗 ). Therefore,
+    to Run. Note that in 𝐺 2,𝑏 , we may write 𝑒𝑖 = 𝑎𝑖 +𝑟 ctr         ctr
+                                                                ¯ +𝑟 ¯ .
+                                                                                   𝐺 3,𝑏 is totally independent of the challenge bit 𝑏. In other words
+                                                            𝑏𝑖 ,𝑖   1−𝑏𝑖 ,𝑖        Pr[𝐺 3,0 ⇒ 1] = Pr[𝐺 3,1 ⇒ 1]|. Traversing through the games
+                                functionality, A learns either 𝑟 ctr
+                        𝑞,𝜏,ℓ
+   Now, from the F 2                                                               from 𝐺 0,0 to 𝐺 3,0 and then from 𝐺 3,1 back to 𝐺 0,1 completes the
+                      ( 1) -rOT                                 𝑏¯𝑖 ,𝑖
+   or 𝑟 ctr ¯ . In particular, it does not know both of these                      proof.                                                                      □
+        1−𝑏𝑖 ,𝑖
+
+
+
+
+                                                                              18
+
