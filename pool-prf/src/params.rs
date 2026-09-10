@@ -1,4 +1,4 @@
-//! See table 3 in the paper for parameters for security parameter lambda of 128 bits.
+//! See table 3 in the paper for parameters for security parameter λ of 128 bits.
 //!
 //! An attempt has been made to make parameters and types generic such that changing
 //! values would work automatically, but this requires further more careful work. Till
@@ -26,33 +26,33 @@ pub const P: Zq = 256;
 /// log2(P).
 pub const LOG_P: u32 = log2(P);
 
-/// Rounding factor: delta = q / p.
+/// Rounding factor: Δ = q / p.
 pub const DELTA_ZQ: Zq = Q / P;
 
 /// Rounding factor, as a usize for lengths and indices.
 pub const DELTA: usize = DELTA_ZQ as usize;
 
-/// log2(delta) = log2(q) - log2(p).
+/// log2(Δ) = log2(q) - log2(p).
 pub const LOG_DELTA: usize = (LOG_Q - LOG_P) as usize;
 
 const _: () = assert!(Q >= P, "Q must be >= P");
 
-/// Element of Zq.
+/// Element of ℤ_q.
 pub type Zq = u16;
 
-/// Element of Zp.
+/// Element of ℤ_p.
 pub type Zp = u8;
 
-/// Zp holds elements of [0, P), so the largest is P - 1.
+/// `Zp` holds elements of [0, P), so the largest is P - 1.
 const _: () = assert!(P - 1 <= Zp::MAX as Zq, "P must fit Zp");
 
-/// Element of Zdelta is used as a choice index for a DELTA-choose-1 OT, in [0, DELTA).
+/// Element of ℤ_Δ, used as a choice index for a 1-out-of-Δ OT, in [0, Δ).
 pub type Zdelta = u8;
 
-/// Zdelta holds elements of [0, DELTA), so the largest is DELTA - 1.
+/// `Zdelta` holds elements of [0, Δ), so the largest is Δ - 1.
 const _: () = assert!(DELTA - 1 <= Zdelta::MAX as usize, "delta must fit Zdelta");
 
-/// Wider type for accumulating sums of Zq elements (e.g. in the inner product).
+/// Wider type for accumulating sums of ℤ_q elements (e.g. in the inner product).
 pub type ZqAccum = u32;
 
 const _: () = assert!(
@@ -60,7 +60,7 @@ const _: () = assert!(
     "ZqAccum must hold an N-term sum over Zq"
 );
 
-/// Wider type for accumulating sums of Zp elements.
+/// Wider type for accumulating sums of ℤ_p elements.
 pub type ZpAccum = u32;
 
 const _: () = assert!(
@@ -68,17 +68,14 @@ const _: () = assert!(
     "ZpAccum must hold an N-term sum over Zp"
 );
 
-/// Number of rows in H's output matrix - the paper's delta.
-///
-/// H maps inputs to Zq^{H_ROWS x N}. Each row is one inner product with sk,
-/// rounded to a single Zp element, so a row carries LOG_P bits of output.
+/// Number of rows in H's output matrix.
 pub const H_ROWS: usize = 16;
 
-/// PRF output length in Zp elements: one per row of H.
+/// PRF output length in ℤ_p elements: one per row of H.
 pub const OUTPUT_ELEMENTS: usize = H_ROWS;
 
-/// Security parameter lambda in bits.
+/// Security parameter λ in bits.
 pub const LAMBDA_BITS: usize = 128;
 
-/// Security parameter lambda in bytes.
+/// Security parameter λ in bytes.
 pub const LAMBDA_BYTES: usize = LAMBDA_BITS / 8;

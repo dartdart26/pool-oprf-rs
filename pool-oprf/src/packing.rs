@@ -1,4 +1,4 @@
-//! Bit-packed Zq vectors. A Zq element takes LOG_Q bits on the wire.
+//! Bit-packed ℤ_q vectors. A ℤ_q element takes LOG_Q bits on the wire.
 //!
 //! Point a field at this module and serde does the rest:
 //!
