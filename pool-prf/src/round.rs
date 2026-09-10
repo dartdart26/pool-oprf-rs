@@ -1,16 +1,16 @@
 use crate::modular::reduce_p;
 use crate::params::{DELTA_ZQ, Q, Zp, Zq};
 
-/// Round a Zq element to Zp by computing (p/q)*v, rounding to the nearest integer.
-/// On a tie, we round down.
+/// `⌈v⌋_{q,p}` of the paper: round a ℤ_q element to ℤ_p by computing (p/q)*v
+/// and taking the nearest integer. On a tie, we round down.
 #[inline]
 pub fn round_zq_to_zp(v: Zq) -> Zp {
     assert!(v < Q, "v must be reduced mod q");
     let quotient = v / DELTA_ZQ;
     let remainder = v % DELTA_ZQ;
-    // Remainder runs from 0 to DELTA - 1. If it is more than half, round up.
+    // Remainder runs from 0 to Δ - 1. If it is more than half, round up.
     // Else round down, with exactly half rounding down.
-    // The arithmetic stays in Zq, so both branches reduce into [0, p) before
+    // The arithmetic stays in ℤ_q, so both branches reduce into [0, p) before
     // the cast, which is then a plain narrowing.
     if remainder > DELTA_ZQ / 2 {
         reduce_p(quotient + 1)
@@ -34,8 +34,8 @@ mod tests {
         for v in 0..=HALF {
             assert_eq!(round_zq_to_zp(v), 0, "v={v}");
         }
-        // The next DELTA values map to 1: HALF + 1 is the first to round up,
-        // and DELTA + HALF is the next tie, which rounds back down.
+        // The next Δ values map to 1: HALF + 1 is the first to round up,
+        // and Δ + HALF is the next tie, which rounds back down.
         for v in HALF + 1..=DELTA_ZQ + HALF {
             assert_eq!(round_zq_to_zp(v), 1, "v={v}");
         }
