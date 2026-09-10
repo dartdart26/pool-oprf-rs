@@ -75,8 +75,8 @@ impl From<[Zp; OUTPUT_ELEMENTS]> for PrfOutput {
 /// Evaluate the PRF on the given tag and input - `Eval(sk, t, x)` of Figure 4.
 ///
 /// `tag` is the OPRF's public input.
-/// RO(t, x) produces a matrix of H_ROWS rows, each a vector in Zq^N.
-/// For each row, we compute the inner product with sk and round to Zp,
+/// RO(t, x) produces a matrix of H_ROWS rows, each a vector a in ℤ_q^n.
+/// For each row, we compute ⌈aᵀsk⌋, the inner product with sk rounded to ℤ_p,
 /// giving one output element per row.
 pub fn evaluate(sk: &SecretKey, tag: &[u8], input: &[u8]) -> PrfOutput {
     let m = hash_to_zq_matrix(tag, input);
@@ -92,13 +92,14 @@ pub fn evaluate_with_matrix(sk: &SecretKey, m: &ZqMatrix) -> PrfOutput {
     PrfOutput(output)
 }
 
-/// Evaluate via a single inner product + round, outputting one Zp element.
+/// Evaluate ⌈aᵀsk⌋ for one row: a single inner product plus rounding,
+/// outputting one ℤ_p element.
 pub fn evaluate_single_row(sk: &SecretKey, v: &ZqVector) -> Zp {
     let inner = inner_product(v, sk);
     round_zq_to_zp(inner)
 }
 
-/// Compute the inner product of a Zq vector with a binary secret key.
+/// Compute aᵀsk, the inner product of a ℤ_q vector with a binary secret key.
 ///
 /// Since sk is binary, this is just the sum of v[i] where sk[i] = 1,
 /// reduced mod Q.

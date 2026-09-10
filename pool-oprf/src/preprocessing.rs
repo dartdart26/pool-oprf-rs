@@ -1,11 +1,11 @@
 //! OT-based preprocessing for the Pool OPRF (Figure 3 of the paper).
 //!
-//! One preprocessing run produces `tau` *slots*, one per base protocol run.
-//! A slot yields one Zp element and is spent once. A full PRF evaluation
-//! spends `H_ROWS` consecutive slots, so a session covers `tau / H_ROWS`
+//! One preprocessing run produces τ *slots*, one per base protocol run.
+//! A slot yields one ℤ_p element and is spent once. A full PRF evaluation
+//! spends `H_ROWS` consecutive slots, so a session covers τ / `H_ROWS`
 //! full evaluations.
 //!
-//! The paper says each binary-rOT message is a vector of tau Zq elements,
+//! The paper says each binary-rOT message is a vector of τ ℤ_q elements,
 //! i.e. randomness from the OT. Our OTs output a 128-bit [`Block`] per
 //! message, so we take that randomness and expand it via BLAKE3: entry j of
 //! the vector is `derive_r(block, j)`, computed on demand instead of
@@ -58,7 +58,7 @@ pub fn random_uid(rng: &mut (impl Rng + CryptoRng)) -> Uid {
     uid
 }
 
-/// The `tau` that `evaluations` full OPRF evaluations need.
+/// The τ that `evaluations` full OPRF evaluations need.
 ///
 /// Panics rather than wrapping.
 pub const fn tau_for(evaluations: usize) -> usize {
@@ -79,11 +79,11 @@ const R_DOMAIN_SEPARATOR: &str = "pool-oprf v1 zq mask from ot seed";
 /// Bytes of XOF output each mask is cut from.
 const MASK_BYTES: usize = size_of::<Zq>();
 
-/// The protocol wants `tau` masks per binary OT message, but our OT hands us
+/// The protocol wants τ masks per binary OT message, but our OT hands us
 /// a single 128-bit `Block`, so we expand it to produce multiple masks via
 /// BLAKE3.
 ///
-/// `first_slot` is the slot the masks start at, from 0 to `tau` - 1.
+/// `first_slot` is the slot the masks start at, from 0 to τ - 1.
 ///
 /// `H_ROWS` at once rather than one at a time: an evaluation spends `H_ROWS`
 /// consecutive slots, and a single hash setup covers all of them.
@@ -104,12 +104,12 @@ pub(crate) fn derive_r(seed: &Block, first_slot: u64) -> [Zq; H_ROWS] {
     out
 }
 
-/// Bytes of a block taken for one Zp element.
+/// Bytes of a block taken for one ℤ_p element.
 const P_BYTES: usize = size_of::<Zp>();
 
 /// The Block is a BLAKE3 output (see `delta_ot::derive_ot_block`), so its
 /// leading bytes are uniform, and reducing them mod p leaves them uniform in
-/// Zp as p is a power of two.
+/// ℤ_p as p is a power of two.
 pub(crate) fn r_prime_from_block(block: &Block) -> Zp {
     let raw = block
         .as_bytes()
@@ -143,7 +143,7 @@ impl Zeroize for RcEntry {
 #[derive(Debug)]
 pub(crate) struct Slots {
     tau: usize,
-    /// Next unspent slot, 0 to `tau` - 1.
+    /// Next unspent slot, 0 to τ - 1.
     ctr: usize,
 }
 
@@ -170,15 +170,15 @@ impl Slots {
 /// Client-side preprocessing state in Figure 3.
 pub struct ClientState {
     /// `S_C` stored as seeds.
-    /// `r_seeds[i][0]` expands to the mask vector `(r^0_{0,i}, ..., r^tau-1_{0,i})`,
-    /// `r_seeds[i][1]` expands to the mask vector `(r^0_{1,i}, ..., r^tau-1_{1,i})`.
+    /// `r_seeds[i][0]` expands to the mask vector `(r^0_{0,i}, ..., r^{τ-1}_{0,i})`,
+    /// `r_seeds[i][1]` expands to the mask vector `(r^0_{1,i}, ..., r^{τ-1}_{1,i})`.
     r_seeds: [[Block; 2]; N],
 
-    /// `b_hat_i = b_i ^ sk_i`, the masked key bits. One byte per bit,
+    /// `b̄_i = b_i ⊕ sk_i`, the masked key bits. One byte per bit,
     /// values 0 or 1.
     bhat: [u8; N],
 
-    /// Length `tau`.
+    /// Length τ.
     r_c: Vec<RcEntry>,
 
     uid: Uid,
@@ -191,7 +191,7 @@ pub struct ClientState {
 pub(crate) struct RsEntry {
     /// `b_i`, 0 or 1.
     pub(crate) b: u8,
-    /// Expands to `(r^0_{b_i,i}, ..., r^{tau-1}_{b_i,i})`.
+    /// Expands to `(r^0_{b_i,i}, ..., r^{τ-1}_{b_i,i})`.
     pub(crate) r_seed: Block,
 }
 
@@ -212,7 +212,7 @@ impl Zeroize for RsEntry {
 pub struct ServerState {
     r_s: [RsEntry; N],
 
-    /// Length `tau`.
+    /// Length τ.
     s_s: Vec<[Zp; DELTA]>,
 
     uid: Uid,
@@ -247,12 +247,12 @@ impl ClientState {
         self.slots.remaining()
     }
 
-    /// `r^j_{b_hat_i,i}` onward, the client's blinding masks for coordinate `i`.
+    /// `r^j_{b̄_i,i}` onward, the client's blinding masks for coordinate `i`.
     pub(crate) fn r_bhat(&self, i: usize, first_slot: u64) -> [Zq; H_ROWS] {
         derive_r(&self.r_seeds[i][self.bhat[i] as usize], first_slot)
     }
 
-    /// `r^j_{1-b_hat_i,i}` onward, the side not used for blinding.
+    /// `r^j_{1-b̄_i,i}` onward, the side not used for blinding.
     pub(crate) fn r_not_bhat(&self, i: usize, first_slot: u64) -> [Zq; H_ROWS] {
         derive_r(&self.r_seeds[i][1 - self.bhat[i] as usize], first_slot)
     }
@@ -382,7 +382,7 @@ pub enum PreprocError {
     TauMismatch { ours: usize, theirs: usize },
 }
 
-/// The opening message: `uid` followed by `tau` as a little-endian `u64`.
+/// The opening message: `uid` followed by τ as a little-endian `u64`.
 const HELLO_BYTES: usize = LAMBDA_BYTES + 8;
 
 const MAX_CONTROL_FRAME_BYTES: usize = N + 9;
@@ -414,9 +414,9 @@ const BINARY_OT_COUNT: usize = N.next_multiple_of(BASE_OT_COUNT);
 
 /// Run the client side of PreProc (Figure 3).
 ///
-/// The client samples the `uid` (line 1), is the sender in the N
-/// binary rOTs (line 2), the receiver in the tau (DELTA-choose-1) rOTs
-/// (line 3), and receives the masked key bits b_hat (line 4).
+/// The client samples the `uid` (line 1), is the sender in the n
+/// binary rOTs (line 2), the receiver in the τ 1-out-of-Δ rOTs
+/// (line 3), and receives the masked key bits b̄ (line 4).
 ///
 /// Both sides must pass the same `tau` - a disagreement is rejected before any
 /// OT runs.
@@ -462,7 +462,7 @@ pub async fn preproc_client(
     let mut r_seeds = sender.send(BINARY_OT_COUNT).await?;
     r_seeds.truncate(N);
 
-    // Line (3): tau (DELTA-choose-1) rOTs with the client as receiver.
+    // Line (3): tau 1-out-of-Δ rOTs with the client as receiver.
     let mut receiver = ot_receiver(delta_ot_conn);
     let receiver_out = delta_ot_receive(&mut receiver, tau).await?;
     let r_c = receiver_out
@@ -475,7 +475,7 @@ pub async fn preproc_client(
         })
         .collect();
 
-    // Line (4): receive the masked key bits b_hat_i = b_i ^ sk_i.
+    // Line (4): receive the masked key bits b̄_i = b_i ⊕ sk_i.
     let bhat = msg_recv
         .next()
         .await
@@ -492,9 +492,9 @@ pub async fn preproc_client(
 
 /// Run the server side of PreProc (Figure 3).
 ///
-/// The server receives the `uid` (line 1), is the receiver in the N
-/// binary rOTs (line 2), the sender in the tau (DELTA-choose-1) rOTs
-/// (line 3), and sends the masked key bits b_hat (line 4).
+/// The server receives the `uid` (line 1), is the receiver in the n
+/// binary rOTs (line 2), the sender in the τ 1-out-of-Δ rOTs
+/// (line 3), and sends the masked key bits b̄ (line 4).
 ///
 /// Both sides must pass the same `tau` - a disagreement is rejected before any
 /// OT runs.
@@ -548,7 +548,7 @@ pub async fn preproc_server(
         })
         .collect();
 
-    // Line (3): tau (DELTA-choose-1) rOTs with the server as sender.
+    // Line (3): tau 1-out-of-Δ rOTs with the server as sender.
     let mut sender = ot_sender(delta_ot_conn);
     let sender_out = delta_ot_send(&mut sender, tau).await?;
     let s_s = sender_out
@@ -557,7 +557,7 @@ pub async fn preproc_server(
         .map(|blocks| std::array::from_fn(|k| r_prime_from_block(&blocks[k])))
         .collect();
 
-    // Line (4): send the masked key bits b_hat_i = b_i ^ sk_i.
+    // Line (4): send the masked key bits b̄_i = b_i ⊕ sk_i.
     let bhat: Vec<u8> = r_s
         .iter()
         .zip(sk.as_bits())

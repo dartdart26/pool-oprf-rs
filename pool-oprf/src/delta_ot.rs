@@ -1,11 +1,11 @@
-//! Builds (DELTA-choose-1) random OT from binary (2-choose-1) random OTs.
+//! Builds 1-out-of-Δ random OT from binary 1-out-of-2 random OTs.
 //!
-//! Since DELTA is a power of 2, a 1-of-DELTA choice is LOG_DELTA binary
-//! choices, so LOG_DELTA binary rOTs make one DELTA-choose-1 rOT. Both
+//! Since Δ is a power of 2, a 1-out-of-Δ choice is LOG_DELTA binary
+//! choices, so LOG_DELTA binary rOTs make one 1-out-of-Δ rOT. Both
 //! parties then derive output Blocks by hashing combinations of the binary OT
 //! outputs.
 //!
-//! As an example, say DELTA is 16 and LOG_DELTA is 4, so one DELTA-choose-1
+//! As an example, say Δ is 16 and LOG_DELTA is 4, so one 1-out-of-Δ
 //! rOT costs 4 binary rOTs. Out of those the sender holds a pair
 //! (b_i^0, b_i^1) for each i in 0..4 and derives all 16 outputs from them.
 //! Bit i of the choice picks which block of pair i to use, least significant
@@ -57,7 +57,7 @@ fn choice_from_bits(bits: &[Choice; LOG_DELTA]) -> Zdelta {
     })
 }
 
-// Derive one output Block for a (DELTA-choose-1) rOT by hashing
+// Derive one output Block for a 1-out-of-Δ rOT by hashing
 // LOG_DELTA Blocks together with `choice`.
 fn derive_ot_block(blocks: &[Block; LOG_DELTA], choice: Zdelta) -> Block {
     assert!(
@@ -85,7 +85,7 @@ fn select_and_derive_ot_block(pairs: &[[Block; 2]; LOG_DELTA], choice: Zdelta) -
     derive_ot_block(&selected, choice)
 }
 
-/// Run the sender side of (DELTA-choose-1) random OT.
+/// Run the sender side of 1-out-of-Δ random OT.
 pub(crate) async fn delta_ot_send<S: RotSender>(
     sender: &mut S,
     delta_ot_count: usize,
@@ -104,7 +104,7 @@ pub(crate) async fn delta_ot_send<S: RotSender>(
     Ok(DeltaOtSenderOutput { blocks })
 }
 
-/// Run the receiver side of (DELTA-choose-1) rOT.
+/// Run the receiver side of 1-out-of-Δ rOT.
 pub(crate) async fn delta_ot_receive<R: RandChoiceRotReceiver>(
     receiver: &mut R,
     delta_ot_count: usize,
@@ -132,7 +132,7 @@ mod tests {
     use super::*;
     use crate::preprocessing::{ot_receiver, ot_sender};
 
-    // The binary rOT pairs a sender holds for one DELTA-OT.
+    // The binary rOT pairs a sender holds for one 1-out-of-Δ OT.
     fn binary_ot_pairs() -> [[Block; 2]; LOG_DELTA] {
         std::array::from_fn(|i| {
             [

@@ -1,8 +1,8 @@
-//! Modular arithmetic in Zq, Zp and Zdelta.
+//! Modular arithmetic in ℤ_q, ℤ_p and ℤ_Δ.
 
 use crate::params::{DELTA, DELTA_ZQ, P, Q, Zdelta, Zp, ZpAccum, Zq, ZqAccum};
 
-/// Reduce an accumulated sum of Zq elements back into Zq.
+/// Reduce an accumulated sum of ℤ_q elements back into ℤ_q.
 ///
 /// Takes anything that fits a ZqAccum.
 #[inline]
@@ -10,7 +10,7 @@ pub fn reduce_q<T: Into<ZqAccum>>(x: T) -> Zq {
     (x.into() % ZqAccum::from(Q)) as Zq
 }
 
-/// Reduce an accumulated sum of Zp elements back into Zp.
+/// Reduce an accumulated sum of ℤ_p elements back into ℤ_p.
 ///
 /// Takes anything that fits a ZpAccum.
 #[inline]
@@ -18,7 +18,7 @@ pub fn reduce_p<T: Into<ZpAccum>>(x: T) -> Zp {
     (x.into() % ZpAccum::from(P)) as Zp
 }
 
-/// Reduce a Zq element into [0, DELTA).
+/// Reduce a ℤ_q element into [0, Δ).
 ///
 /// Takes anything that fits a Zq.
 #[inline]
@@ -56,7 +56,7 @@ pub fn sub_p(x: Zp, y: Zp) -> Zp {
     reduce_p(ZpAccum::from(x) + ZpAccum::from(P) - ZpAccum::from(y))
 }
 
-/// `x - y mod delta`. Both must already be in [0, DELTA).
+/// `x - y mod Δ`. Both must already be in [0, Δ).
 #[inline]
 pub fn sub_delta(x: Zdelta, y: Zdelta) -> Zdelta {
     assert!(

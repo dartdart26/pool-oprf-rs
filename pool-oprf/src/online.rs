@@ -4,10 +4,10 @@
 //! that apply to all three:
 //!
 //!  - **One evaluation is `H_ROWS` base runs.** A base run of the paper's
-//!    protocol produces a single Zp element, while the PRF output is a whole
+//!    protocol produces a single ℤ_p element, while the PRF output is a whole
 //!    row vector, so every algorithm here runs the single-row version
 //!    `H_ROWS` times over `H_ROWS` consecutive slots. A [`ClientState`] with
-//!    `tau` slots therefore supports `tau / H_ROWS` evaluations.
+//!    τ slots therefore supports τ / `H_ROWS` evaluations.
 //!  - **One message may carry several evaluations.** Batching is not in the
 //!    paper, but a caller with a set to evaluate (a PSI, say) would otherwise
 //!    pay one round trip per element and lose the round-optimality the design
@@ -64,16 +64,16 @@ pub enum FinalizeError {
 }
 
 /// One row of a request. Figure 4's `Request` is the single-row protocol and
-/// returns a whole message, `(t, (e_1, ..., e_n), b_bar', uid)`. An evaluation
+/// returns a whole message, `(t, (e_1, ..., e_n), b̄′, uid)`. An evaluation
 /// runs `H_ROWS` of those, so a row is that tuple without `t` and `uid`, which
 /// [`RequestMessage`] carries once for all the rows.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RowRequest {
-    /// `e_i = a_i + r_i + r^ctr_{1-b_bar_i,i} mod q`, for `i` in `[N]`,
-    /// where `r_i = r^ctr_{b_bar_i,i}`.
+    /// `e_i = a_i + r_i + r^ctr_{1-b̄_i,i} mod q`, for `i` in `[N]`,
+    /// where `r_i = r^ctr_{b̄_i,i}`.
     #[serde(with = "crate::packing")]
     pub e: [Zq; N],
-    /// `b_bar' = (r_sigma mod DELTA - b'_ctr) mod DELTA`.
+    /// `b̄′ = (r_Σ mod Δ - b′_ctr) mod Δ`.
     pub(crate) b_bar_prime: Zdelta,
 }
 
@@ -94,7 +94,7 @@ impl RequestMessage {
 }
 
 /// One row of a response. Figure 4's `BlindEval` is the single-row protocol
-/// and returns a whole message, `((y_0, ..., y_{DELTA-1}), uid, ctr)`. An
+/// and returns a whole message, `((y_0, ..., y_{Δ-1}), uid, ctr)`. An
 /// evaluation runs `H_ROWS` of those, so a row is that tuple without `uid`,
 /// which [`ResponseMessage`] carries once for all the rows.
 ///
@@ -102,8 +102,8 @@ impl RequestMessage {
 /// slot.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct RowResponse {
-    /// `y_i = round_{q,p}((a_tilde_sigma - i) mod Q) + r'_{i - b_bar' mod DELTA, ctr} mod P`,
-    /// for `i` in `[0, DELTA)`.
+    /// `y_i = ⌈(ã_Σ - i) mod q⌋_{q,p} + r′_{(i - b̄′) mod Δ, ctr} mod p`,
+    /// for `i` in `[0, Δ)`.
     pub(crate) y: [Zp; DELTA],
     /// The preprocessing slot this row consumed.
     pub(crate) ctr: u64,
@@ -124,14 +124,14 @@ impl ResponseMessage {
 }
 
 /// One row's `st_fin`, stored by Request() in Figure 4 as
-/// `((uid, ctr), r_sigma, r'_{b'_ctr})` and read back by Finalize(). The `uid`
+/// `((uid, ctr), r_Σ, r′_{b′_ctr})` and read back by Finalize(). The `uid`
 /// is on [`FinalizeState`], which carries it once for all the rows.
 #[derive(Clone)]
 pub(crate) struct RowFinalizeState {
     pub(crate) ctr: u64,
-    /// `r_sigma = r_1 + ... + r_n mod Q`, where `r_i = r^ctr_{b_bar_i,i}` - see Request() in Figure 4.
+    /// `r_Σ = r_1 + ... + r_n mod q`, where `r_i = r^ctr_{b̄_i,i}` - see Request() in Figure 4.
     pub(crate) r_sigma: Zq,
-    /// `r'_{b'_ctr}`.
+    /// `r′_{b′_ctr}`.
     pub(crate) r_prime: Zp,
 }
 
@@ -267,7 +267,7 @@ fn request_evaluation(
         let ctr = first_slot + k as u64;
         let r_sigma = reduce_q(r_sigma_acc[k]);
 
-        let rc = state.r_c(ctr); // (b'_ctr, r'_{b'_ctr})
+        let rc = state.r_c(ctr); // (b′_ctr, r′_{b′_ctr})
         let b_bar_prime = sub_delta(reduce_delta(r_sigma), rc.b_prime);
 
         rows.push(RowRequest {
@@ -352,7 +352,7 @@ fn blind_eval_evaluation(
     let mut a_tilde_acc = [0 as ZqAccum; H_ROWS];
 
     for (i, &sk_i) in sk_bits.iter().enumerate() {
-        // r^ctr_{b_i, i} for each row
+        // r^ctr_{b_i,i} for each row
         let r = state.r(i, first_slot);
 
         let s = ZqAccum::from(sk_i);

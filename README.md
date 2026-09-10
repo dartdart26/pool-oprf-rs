@@ -57,3 +57,12 @@ Research code. Not audited, and not safe for production until it is.
 
 This is still experimental and a lot of things can be improved, optimized and added.
 Treat as work in progress.
+
+## License
+
+The code in this repository is covered by [LICENSE](LICENSE), as is the
+documentation written here.
+
+It does not cover [`docs/paper`](docs/paper/), which holds the Pool paper and a
+text extraction of it. That work belongs to its authors and is included for
+reference only, under its own terms.
