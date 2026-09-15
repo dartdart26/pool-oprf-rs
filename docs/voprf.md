@@ -1,4 +1,4 @@
-# Verifiable Pool
+# Pool VOPRF: the server's proof
 
 - [1. What this is](#1-what-this-is)
 - [2. Symbols, and how to read them](#2-symbols-and-how-to-read-them)
