@@ -20,7 +20,7 @@ use cryprot_ot::extension::{SemiHonestOtExtensionReceiver, SemiHonestOtExtension
 use cryprot_ot::{RandChoiceRotReceiver, RotSender};
 #[cfg(feature = "silent-ot")]
 use cryprot_ot::{
-    SemiHonestMarker,
+    MaliciousMarker,
     silent_ot::{SilentOtReceiver, SilentOtSender},
 };
 
@@ -30,9 +30,9 @@ pub(crate) type OtSender = SemiHonestOtExtensionSender;
 #[cfg(not(feature = "silent-ot"))]
 pub(crate) type OtReceiver = SemiHonestOtExtensionReceiver;
 #[cfg(feature = "silent-ot")]
-pub(crate) type OtSender = SilentOtSender<SemiHonestMarker>;
+pub(crate) type OtSender = SilentOtSender<MaliciousMarker>;
 #[cfg(feature = "silent-ot")]
-pub(crate) type OtReceiver = SilentOtReceiver<SemiHonestMarker>;
+pub(crate) type OtReceiver = SilentOtReceiver<MaliciousMarker>;
 
 pub(crate) fn ot_sender(conn: Connection) -> OtSender {
     OtSender::new(conn)
