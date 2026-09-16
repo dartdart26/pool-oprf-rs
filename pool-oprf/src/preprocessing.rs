@@ -16,7 +16,7 @@ use cryprot_core::Block;
 use cryprot_net::Connection;
 use cryprot_ot::extension::BASE_OT_COUNT;
 #[cfg(not(feature = "silent-ot"))]
-use cryprot_ot::extension::{SemiHonestOtExtensionReceiver, SemiHonestOtExtensionSender};
+use cryprot_ot::extension::{MaliciousOtExtensionReceiver, MaliciousOtExtensionSender};
 #[cfg(feature = "silent-ot")]
 use cryprot_ot::{
     MaliciousMarker,
@@ -26,9 +26,9 @@ use cryprot_ot::{RandChoiceRotReceiver, RotSender};
 
 /// The rOT type this build preprocesses with.
 #[cfg(not(feature = "silent-ot"))]
-pub(crate) type OtSender = SemiHonestOtExtensionSender;
+pub(crate) type OtSender = MaliciousOtExtensionSender;
 #[cfg(not(feature = "silent-ot"))]
-pub(crate) type OtReceiver = SemiHonestOtExtensionReceiver;
+pub(crate) type OtReceiver = MaliciousOtExtensionReceiver;
 #[cfg(feature = "silent-ot")]
 pub(crate) type OtSender = SilentOtSender<MaliciousMarker>;
 #[cfg(feature = "silent-ot")]
