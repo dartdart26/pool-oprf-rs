@@ -1,0 +1,52 @@
+[package]
+name = "pool-voprf"
+version = "0.1.0"
+edition = "2024"
+description = "Verifiable Pool OPRF: the server's zero-knowledge proofs"
+license = "MIT"
+
+[features]
+default = ["plonky3"]
+
+plonky3 = [
+    "dep:rand",
+    "dep:p3-air",
+    "dep:p3-challenger",
+    "dep:p3-commit",
+    "dep:p3-dft",
+    "dep:p3-fri",
+    "dep:p3-matrix",
+    "dep:p3-merkle-tree",
+    "dep:p3-poseidon2-air",
+    "dep:p3-uni-stark",
+]
+# Multithreaded proving for the plonky3 backend.
+parallel = ["plonky3", "p3-maybe-rayon/parallel"]
+
+[dependencies]
+pool-prf = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+zeroize = { workspace = true }
+p3-baby-bear = { workspace = true }
+p3-field = { workspace = true }
+p3-symmetric = { workspace = true }
+
+rand = { workspace = true, optional = true }
+p3-air = { workspace = true, optional = true }
+p3-challenger = { workspace = true, optional = true }
+p3-commit = { workspace = true, optional = true }
+p3-dft = { workspace = true, optional = true }
+p3-fri = { workspace = true, optional = true }
+p3-matrix = { workspace = true, optional = true }
+p3-maybe-rayon = { workspace = true, optional = true }
+p3-merkle-tree = { workspace = true, optional = true }
+p3-poseidon2-air = { workspace = true, optional = true }
+p3-uni-stark = { workspace = true, optional = true }
+
+[dev-dependencies]
+bincode = { workspace = true }
+rand = { workspace = true }
+
+[lints]
+workspace = true
