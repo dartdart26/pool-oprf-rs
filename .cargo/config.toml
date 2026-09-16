@@ -2,3 +2,13 @@
 # s2n-quic picks its TLS security policy at compile time from this cfg.
 rustflags = ["--cfg", "s2n_quic_enable_pq_tls"]
 rustdocflags = ["--cfg", "s2n_quic_enable_pq_tls"]
+
+[env]
+# For flaky tests.
+RAYON_NUM_THREADS = "16"
+
+# Plonky3 picks its SIMD code at compile time, so build for the portable
+# AVX2 level on x86.
+# 64-bit ARM needs no entry as these CPUs have NEON.
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["--cfg", "s2n_quic_enable_pq_tls", "-C", "target-cpu=x86-64-v3"]
