@@ -151,7 +151,7 @@ fn main() {
         if cfg!(feature = "silent-ot") {
             "silent"
         } else {
-            "IKNP extension"
+            "KOS15 extension"
         }
     );
     println!();

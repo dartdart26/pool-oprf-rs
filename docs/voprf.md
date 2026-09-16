@@ -183,15 +183,18 @@ implementation.
 ## 8. The OT underneath
 
 Everything above treats the two random OTs as ideal and maliciously secure.
-To ensure that:
+CryProt's OTs are, in their malicious variants:
 
-- Base OT: [MR19] with ML-KEM. [MR19] proves it
-  endemic secure in the random oracle model. CryProt has no proof for its
-  port, so this note assumes it.
-- On top: silent OT [BCG+19] with the consistency check of [YWL+20], which
-  makes it maliciously secure. [MR19] shows endemic base OTs are
-  enough underneath OT extension. The result is a maliciously secure random
-  OT.
+- Base OT: [MR19] with ML-KEM, endemic secure in the random oracle model.
+- IKNP extension, the default build: [KOS15]. [MR19] shows it is
+  maliciously secure over endemic base OTs.
+- Silent OT extension, the `silent-ot` feature: [BCG+19] with the check of
+  [YWL+20], on top of [KOS15] base OTs.
+
+Pool uses the malicious variants in both of its builds: [KOS15] for IKNP in
+the default build, and silent OT with the `silent-ot` feature.
+
+**Maliciously secure OT extension reasonings needs to be double checked.**
 
 Without malicious OT there is no OPRF, verifiable or not: a server that
 cheats the OT learns the client's input, and a client that cheats it learns
@@ -203,6 +206,8 @@ the key.
   OPRF from Learning with Rounding. https://eprint.iacr.org/2025/1816
 - [MR19] D. Masny, P. Rindal. Endemic Oblivious Transfer. CCS 2019.
   https://eprint.iacr.org/2019/706
+- [KOS15] M. Keller, E. Orsini, P. Scholl. Actively Secure OT Extension with
+  Optimal Overhead. CRYPTO 2015. https://eprint.iacr.org/2015/546
 - [BCG+19] E. Boyle, G. Couteau, N. Gilboa, Y. Ishai, L. Kohl, P. Scholl.
   Efficient Pseudorandom Correlation Generators: Silent OT Extension and
   More. CRYPTO 2019. https://eprint.iacr.org/2019/448

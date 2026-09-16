@@ -6,7 +6,7 @@ description = "Post-quantum OPRF based on the Pool protocol (OT + LWR)"
 license = "MIT"
 
 [features]
-# Preprocess with silent OT instead of IKNP OT extension. Table 4 of the paper
+# Preprocess with silent OT instead of KOS15 OT extension. Table 4 of the paper
 # puts silent OT at a small fraction of IKNP's communication and several times
 # its runtime, so it suits a server that preprocesses ahead of time and pays
 # for bandwidth.

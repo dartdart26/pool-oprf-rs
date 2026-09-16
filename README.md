@@ -35,8 +35,9 @@ cargo bench --workspace     # benchmarks
 ./pool-psi-cli/demo.sh      # a demo of the PSI client and server over the network
 ```
 
-Preprocessing uses IKNP OT extension by default. The `silent-ot` feature swaps
-in silent OT.
+Preprocessing uses KOS15 OT extension by default, which is IKNP with the check
+that makes it maliciously secure. The `silent-ot` feature swaps in malicious
+silent OT.
 
 ```
 cargo test --workspace --features silent-ot
