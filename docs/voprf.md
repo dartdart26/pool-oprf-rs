@@ -177,8 +177,31 @@ evaluation and are proven once per preprocessing.
 
 ## 7. Which proof system
 
-Any that is zero-knowledge and post-quantum - the choice is left to the
-implementation.
+Any that is zero-knowledge and post-quantum. `pool-voprf` implements (K)
+with Plonky3's univariate STARK: FRI over BabyBear with a degree-4
+extension, made hiding after [HK24], Merkle leaves salted, the trace and
+the quotient masked with random polynomials. Nothing but hashing is
+assumed.
+
+That hash is BLAKE3 everywhere: in the Merkle trees, in Fiat-Shamir and
+inside the circuit, where a commitment is checked by recomputing one
+compression per block. The usual choice would be an algebraic hash such
+as Poseidon2, far cheaper in-circuit, but its security margin shrank through
+2026, until the Ethereum Foundation dropped it in August 2026 for SHA and
+BLAKE. These proofs hash a few hundred blocks per evaluation at most, so the
+cost of BLAKE3 in-circuit is affordable, and the project rests on the one
+hash it already uses.
+
+The commitment to the key is `pk = BLAKE3.derive_key(ctx)(pack(sk))`, with
+`ctx` the domain separator `pool-voprf v1 key commitment` and `pack(sk)` the
+`n` key bits packed into `⌈n/8⌉` bytes. The key is uniform, so the hash
+hides it as it is. The proof's trace is the BLAKE3 AIR's own, with the key
+bits as the message bits of the block, so the AIR's boolean checks are the
+bit check of (K).
+
+(S), (P), (A) and (R) are not implemented yet. (P) and (S) will commit to
+the OT blocks and seeds the same way, so the proof derives the pads and
+masks from them in-circuit, and no commitment needs randomness of its own.
 
 ## 8. The OT underneath
 
@@ -214,4 +237,7 @@ the key.
 - [YWL+20] K. Yang, C. Weng, X. Lan, J. Zhang, X. Wang. Ferret: Fast Extension
   for Correlated OT with Small Communication. CCS 2020.
   https://eprint.iacr.org/2020/924
+- [HK24] U. Haböck, A. Kindi. A note on adding zero-knowledge to STARK.
+  https://eprint.iacr.org/2024/1037
 - CryProt, https://github.com/robinhundt/CryProt
+- Plonky3, https://github.com/Plonky3/Plonky3

@@ -21,6 +21,7 @@ s2n-quic.
 | `pool-oprf`     | the OPRF: OT preprocessing, blind evaluation, client/server |
 | `pool-psi`      | PSI library on top of pool-oprf                             |
 | `pool-psi-cli`  | a generic PSI client and server based on pool-psi           |
+| `pool-voprf`    | verifiable OPRF: the server's zero-knowledge proofs         |
 
 ## Parameters
 
@@ -46,6 +47,20 @@ cargo bench --workspace --features silent-ot
 ```
 
 See [`pool-psi-cli`](pool-psi-cli/README.md) to run client and server separately.
+
+## Verifiable OPRF
+
+[`docs/voprf.md`](docs/voprf.md) works out what the server has to prove for
+Pool to be a verifiable OPRF. `pool-voprf` implements it, so far constraint
+(K) only: `pk`, a commitment to the key, and a zero-knowledge proof that the
+server holds a binary key opening it. The proof system is a Plonky3 STARK with
+hiding FRI and BLAKE3 inside the circuit, behind the crate's `plonky3` feature,
+on by default. The OPRF crates do not depend on it, so the plain OPRF is
+unchanged.
+
+```
+cargo test -p pool-voprf -- --nocapture   # also prints proving time, proof size and security grades
+```
 
 ## Security
 
