@@ -14,7 +14,7 @@ use pool_oprf::client::OprfClient;
 use pool_oprf::online::MAX_BATCH_EVALUATIONS;
 use pool_oprf::preprocessing::Uid;
 use pool_prf::prf::PrfOutput;
-use rand::{CryptoRng, Rng};
+use rand::CryptoRng;
 
 /// A PSI client that has completed preprocessing for a set of a fixed size.
 pub struct PsiClient {
@@ -28,7 +28,7 @@ impl PsiClient {
     pub async fn new(
         mut conn: Connection,
         set_size: usize,
-        rng: &mut (impl Rng + CryptoRng),
+        rng: &mut impl CryptoRng,
     ) -> Result<Self, PsiError> {
         if set_size == 0 {
             return Err(PsiError::EmptyClientSet);
