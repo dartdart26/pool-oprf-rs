@@ -17,12 +17,12 @@ use cryprot_net::Connection;
 use cryprot_ot::extension::BASE_OT_COUNT;
 #[cfg(not(feature = "silent-ot"))]
 use cryprot_ot::extension::{SemiHonestOtExtensionReceiver, SemiHonestOtExtensionSender};
-use cryprot_ot::{RandChoiceRotReceiver, RotSender};
 #[cfg(feature = "silent-ot")]
 use cryprot_ot::{
     MaliciousMarker,
     silent_ot::{SilentOtReceiver, SilentOtSender},
 };
+use cryprot_ot::{RandChoiceRotReceiver, RotSender};
 
 /// The rOT type this build preprocesses with.
 #[cfg(not(feature = "silent-ot"))]
