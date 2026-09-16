@@ -35,9 +35,10 @@ client accepts the response from the server, its output is `F_sk(t, x)` for the
 Pool runs on two random OTs, and the paper treats them as ideal: a box that
 hands each party its outputs and reveals nothing else. This note uses
 maliciously secure OT, which behaves like that box even when one party
-cheats. That leaves the server with three messages in the whole protocol:
-`pk` once, `b̄` in preprocessing and `y` in every evaluation. Those are all
-it can fake, and the proof covers exactly those.
+cheats. [Section 8](#8-the-ot-underneath) says which OT gives that. That
+leaves the server with three messages in the whole protocol: `pk` once, `b̄`
+in preprocessing and `y` in every evaluation. Those are all it can fake, and
+the proof covers exactly those.
 
 ## 2. Symbols, and how to read them
 
@@ -54,10 +55,10 @@ A *coordinate* is an index `i` into `aᵀsk = Σ_i a_i*sk_i`, i.e. into `a` and
 ## 3. What the server can fake
 
 The server sends three things in the whole protocol: `pk` once, `b̄` in
-preprocessing step 4, and `y_0 .. y_{Δ-1}` in BlindEval. The OTs are ideal,
-so those are its only messages, and whatever it does wrong shows up in one
-of them or not at all. It can fake any of them undetected, since an OPRF
-output looks random either way.
+preprocessing step 4, and `y_0 .. y_{Δ-1}` in BlindEval. The OTs are ideal
+([section 8](#8-the-ot-underneath)), so those are its only messages, and
+whatever it does wrong shows up in one of them or not at all. It can fake
+any of them undetected, since an OPRF output looks random either way.
 
 ## 4. What the server proves
 
