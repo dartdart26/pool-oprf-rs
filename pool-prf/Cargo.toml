@@ -12,6 +12,7 @@ serde = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
+bincode = { workspace = true }
 rand = { workspace = true }
 
 [lints]

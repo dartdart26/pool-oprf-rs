@@ -215,3 +215,4 @@ the key.
   for Correlated OT with Small Communication. CCS 2020.
   https://eprint.iacr.org/2020/924
 - CryProt, https://github.com/robinhundt/CryProt
+- Plonky3, https://github.com/Plonky3/Plonky3

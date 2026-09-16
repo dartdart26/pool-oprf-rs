@@ -173,6 +173,35 @@ mod tests {
     }
 
     #[test]
+    fn a_key_must_be_made_of_bits() {
+        let mut bits = [0; N];
+        bits[7] = 2;
+        assert!(SecretKey::from_bits(bits).is_none());
+    }
+
+    #[test]
+    fn deserializing_refuses_a_non_bit() {
+        let mut bits = [0u8; N];
+        bits[7] = 2;
+        let bytes = bincode::serialize(&bits[..]).expect("serializing");
+        assert!(bincode::deserialize::<SecretKey>(&bytes).is_err());
+    }
+
+    #[test]
+    fn deserializing_refuses_a_wrong_length() {
+        let bytes = bincode::serialize(&[0u8; N - 1][..]).expect("serializing");
+        assert!(bincode::deserialize::<SecretKey>(&bytes).is_err());
+    }
+
+    #[test]
+    fn key_ser_deser_roundtrip() {
+        let sk = SecretKey::random(&mut rand::rng());
+        let bytes = bincode::serialize(&sk).expect("serializing");
+        let back: SecretKey = bincode::deserialize(&bytes).expect("deserializing");
+        assert_eq!(back.as_bits(), sk.as_bits());
+    }
+
+    #[test]
     fn row_by_row_equals_full_evaluation() {
         let sk = SecretKey::random(&mut rand::rng());
         let matrix = hash_to_zq_matrix(b"tag", b"consistency");
