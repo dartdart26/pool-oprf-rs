@@ -2,7 +2,7 @@ use crate::hash::{ZqMatrix, ZqVector, hash_to_zq_matrix};
 use crate::modular::reduce_q;
 use crate::params::{N, OUTPUT_ELEMENTS, Zp, Zq, ZqAccum};
 use crate::round::round_zq_to_zp;
-use rand::{CryptoRng, Rng, RngExt};
+use rand::{CryptoRng, RngExt};
 use serde::Deserialize;
 use serde::Serialize;
 use serde::de::{self, Deserializer};
@@ -33,7 +33,7 @@ impl<'de> Deserialize<'de> for SecretKey {
 
 impl SecretKey {
     /// Sample a fresh key.
-    pub fn random(rng: &mut (impl Rng + CryptoRng)) -> Self {
+    pub fn random(rng: &mut impl CryptoRng) -> Self {
         let mut key = [0u8; N];
         rng.fill(&mut key[..]);
         for k in &mut key {

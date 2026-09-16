@@ -14,7 +14,7 @@ use crate::preprocessing::{
 };
 use cryprot_net::Connection;
 use pool_prf::prf::PrfOutput;
-use rand::{CryptoRng, Rng};
+use rand::CryptoRng;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
@@ -42,7 +42,7 @@ impl OprfClient {
     pub async fn new(
         mut conn: Connection,
         evaluations: usize,
-        rng: &mut (impl Rng + CryptoRng),
+        rng: &mut impl CryptoRng,
     ) -> Result<Self, ClientError> {
         let state = preproc_client(&mut conn, tau_for(evaluations), rng).await?;
         let channel = ClientChannel::new(&mut conn).await?;
@@ -63,7 +63,7 @@ impl OprfClient {
     pub async fn renew(
         &mut self,
         evaluations: usize,
-        rng: &mut (impl Rng + CryptoRng),
+        rng: &mut impl CryptoRng,
     ) -> Result<Uid, ClientError> {
         self.state = preproc_client(&mut self.conn, tau_for(evaluations), rng).await?;
         Ok(*self.state.uid())

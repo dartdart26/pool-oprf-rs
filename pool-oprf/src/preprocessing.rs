@@ -45,14 +45,14 @@ use futures::{SinkExt, StreamExt};
 use pool_prf::modular::{reduce_p, reduce_q};
 use pool_prf::params::{DELTA, H_ROWS, LAMBDA_BYTES, N, Zdelta, Zp, Zq};
 use pool_prf::prf::SecretKey;
-use rand::{CryptoRng, Rng, RngExt};
+use rand::{CryptoRng, RngExt};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Session identifier, `uid` in Figure 3.
 pub type Uid = [u8; LAMBDA_BYTES];
 
 /// Sample a fresh `uid`.
-pub fn random_uid(rng: &mut (impl Rng + CryptoRng)) -> Uid {
+pub fn random_uid(rng: &mut impl CryptoRng) -> Uid {
     let mut uid = Uid::default();
     rng.fill(&mut uid[..]);
     uid
@@ -423,7 +423,7 @@ const BINARY_OT_COUNT: usize = N.next_multiple_of(BASE_OT_COUNT);
 pub async fn preproc_client(
     conn: &mut Connection,
     tau: usize,
-    rng: &mut (impl Rng + CryptoRng),
+    rng: &mut impl CryptoRng,
 ) -> Result<ClientState, PreprocError> {
     if tau == 0 {
         return Err(PreprocError::ZeroTau);
