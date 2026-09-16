@@ -21,6 +21,7 @@ s2n-quic.
 | `pool-oprf`     | the OPRF: OT preprocessing, blind evaluation, client/server |
 | `pool-psi`      | PSI library on top of pool-oprf                             |
 | `pool-psi-cli`  | a generic PSI client and server based on pool-psi           |
+| `pool-voprf`    | verifiable OPRF: the server's zero-knowledge proofs         |
 
 ## Parameters
 
@@ -47,12 +48,31 @@ cargo bench --workspace --features silent-ot
 
 See [`pool-psi-cli`](pool-psi-cli/README.md) to run client and server separately.
 
+## Verifiable OPRF
+
+[`docs/voprf.md`](docs/voprf.md) works out what the server has to prove for
+Pool to be a verifiable OPRF. [`pool-voprf`](pool-voprf/README.md) implements
+it.
+
+Still work in progress.
+
+Currently using Plonky3 with Poseidon2 hashing. To run the proof system tests:
+
+```
+cargo test -p pool-voprf -- --nocapture
+```
+
 ## Security
 
 Semi-honest only: the protocol is secure against passive adversaries that follow
 it, but a malicious party that deviates can break it.
 
 Research code. Not audited, and not safe for production until it is.
+
+Key material in memory, namely the secret key, and the client's and server's
+preprocessing and finalize states clear themselves when dropped. Per-call intermediates
+and the buffers of the OT, networking and proof libraries are not cleared. Treat the memory
+of a process that holds a key as sensitive.
 
 ## Roadmap
 

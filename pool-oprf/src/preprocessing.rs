@@ -220,6 +220,13 @@ pub struct ServerState {
     slots: Slots,
 }
 
+fn into_array<T: Copy, const N: usize>(mut v: Vec<T>, what: &str) -> [T; N] {
+    let array = v[..].try_into().expect(what);
+    v.clear();
+    v.spare_capacity_mut().zeroize();
+    array
+}
+
 impl ClientState {
     pub(crate) fn new(
         r_seeds: Vec<[Block; 2]>,
@@ -227,8 +234,8 @@ impl ClientState {
         r_c: Vec<RcEntry>,
         uid: Uid,
     ) -> Self {
-        let r_seeds: [[Block; 2]; N] = r_seeds.try_into().expect("N binary rOT seed pairs");
-        let bhat: [u8; N] = bhat.try_into().expect("N masked key bits");
+        let r_seeds: [[Block; 2]; N] = into_array(r_seeds, "N binary rOT seed pairs");
+        let bhat: [u8; N] = into_array(bhat, "N masked key bits");
         let slots = Slots::new(r_c.len());
         Self {
             r_seeds,
@@ -299,7 +306,7 @@ impl ZeroizeOnDrop for ClientState {}
 
 impl ServerState {
     pub(crate) fn new(r_s: Vec<RsEntry>, s_s: Vec<[Zp; DELTA]>, uid: Uid) -> Self {
-        let r_s: [RsEntry; N] = r_s.try_into().expect("N binary rOT entries");
+        let r_s: [RsEntry; N] = into_array(r_s, "N binary rOT entries");
         let slots = Slots::new(s_s.len());
         Self {
             r_s,
