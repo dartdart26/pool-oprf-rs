@@ -45,7 +45,7 @@ use futures::{SinkExt, StreamExt};
 use pool_prf::modular::{reduce_p, reduce_q};
 use pool_prf::params::{DELTA, H_ROWS, LAMBDA_BYTES, N, Zdelta, Zp, Zq};
 use pool_prf::prf::SecretKey;
-use rand::{CryptoRng, Rng};
+use rand::{CryptoRng, Rng, RngExt};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Session identifier, `uid` in Figure 3.
@@ -54,7 +54,7 @@ pub type Uid = [u8; LAMBDA_BYTES];
 /// Sample a fresh `uid`.
 pub fn random_uid(rng: &mut (impl Rng + CryptoRng)) -> Uid {
     let mut uid = Uid::default();
-    rng.fill(&mut uid);
+    rng.fill(&mut uid[..]);
     uid
 }
 

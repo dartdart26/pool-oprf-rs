@@ -23,7 +23,7 @@ bitvec = "1.0"
 blake3 = "1.5"
 clap = { version = "4.6.6", features = ["derive"] }
 futures = "0.3.32"
-rand = "0.9"
+rand = "0.10"
 s2n-quic = "1.86.0"
 # Not used directly: it turns on the `pq` feature of the s2n-tls that s2n-quic
 # already pulls in, so the hybrid ML-KEM policy exists.

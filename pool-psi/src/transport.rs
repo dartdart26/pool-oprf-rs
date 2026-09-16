@@ -75,7 +75,7 @@ impl ServerChannel {
 mod tests {
     use super::*;
     use crate::protocol::{MAX_SERVER_SET, MaskedElement};
-    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
 
     #[tokio::test]
     async fn a_maximum_server_set_can_be_sent() {

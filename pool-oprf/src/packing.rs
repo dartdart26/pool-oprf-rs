@@ -56,7 +56,7 @@ mod tests {
     use super::*;
     use bincode::Options;
     use pool_prf::params::{N, Q};
-    use rand::Rng;
+    use rand::RngExt;
 
     #[derive(serde::Serialize, serde::Deserialize)]
     struct Row(#[serde(with = "crate::packing")] [Zq; N]);
