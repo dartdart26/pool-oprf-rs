@@ -61,6 +61,10 @@ impl KeyStatement {
 
 impl Statement for KeyStatement {
     type Witness = SecretKey;
+
+    fn holds_for(&self, sk: &SecretKey) -> bool {
+        Self::for_key(sk) == *self
+    }
 }
 
 #[cfg(test)]

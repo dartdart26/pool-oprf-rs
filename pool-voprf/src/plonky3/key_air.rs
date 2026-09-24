@@ -25,11 +25,11 @@
 
 use crate::commitment::{DIGEST_ELEMENTS, RATE, WIDTH};
 use crate::key::{
-    BITS_PER_ELEMENT, INPUT_ELEMENTS, KeyCommitment, KeyStatement, PACKED_KEY_ELEMENTS, commit,
-    elements, pack_key,
+    BITS_PER_ELEMENT, INPUT_ELEMENTS, KeyCommitment, KeyStatement, PACKED_KEY_ELEMENTS, elements,
+    pack_key,
 };
-use crate::plonky3::{Plonky3, Proof, ProveError, Val, VerifyError};
-use crate::proof::ProofSystem;
+use crate::plonky3::{Plonky3, Proof, ProveError, ROWS, Val, VerifyError};
+use crate::proof::{ProofSystem, Statement};
 use core::array;
 use core::borrow::Borrow;
 use core::ops::Range;
@@ -105,10 +105,6 @@ const fn permutation_columns(index: usize) -> Range<usize> {
     let start = N + index * PERMUTATION_COLS;
     start..start + PERMUTATION_COLS
 }
-
-/// How many times the row is repeated. Must be a power of 2.
-/// Needed for hiding.
-const ROWS: usize = 256;
 
 /// The rules for (K). Its public value is `pk`.
 #[derive(Default)]
@@ -246,7 +242,7 @@ impl ProofSystem<KeyStatement> for Plonky3 {
     type VerifyError = VerifyError;
 
     fn prove(&self, statement: &KeyStatement, sk: &SecretKey) -> Result<Proof, ProveError> {
-        if commit(sk) != statement.pk {
+        if !statement.holds_for(sk) {
             return Err(ProveError::WrongWitness);
         }
         let trace = KeyAir::trace(sk);
@@ -262,6 +258,7 @@ impl ProofSystem<KeyStatement> for Plonky3 {
 mod tests {
     use super::*;
     use crate::commitment::sponge;
+    use crate::key::commit;
     use p3_air::check_constraints;
     use p3_matrix::Matrix;
     use p3_symmetric::CryptographicHasher;

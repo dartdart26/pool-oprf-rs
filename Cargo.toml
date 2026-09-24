@@ -1,9 +1,17 @@
 [workspace]
-members = ["pool-prf", "pool-oprf", "pool-psi", "pool-psi-cli", "pool-voprf"]
+members = [
+    "pool-prf",
+    "pool-eval",
+    "pool-oprf",
+    "pool-psi",
+    "pool-psi-cli",
+    "pool-voprf",
+]
 resolver = "2"
 
 [workspace.dependencies]
 pool-prf = { path = "pool-prf" }
+pool-eval = { path = "pool-eval" }
 pool-oprf = { path = "pool-oprf" }
 pool-psi = { path = "pool-psi" }
 pool-voprf = { path = "pool-voprf" }
