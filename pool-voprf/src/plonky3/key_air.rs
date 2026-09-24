@@ -115,7 +115,7 @@ const ROWS: usize = 256;
 pub struct KeyAir;
 
 impl KeyAir {
-    /// The table for `sk` - [`ROWS`] copies of the row.
+    /// The table for `sk` - `ROWS` copies of the row.
     pub fn trace(sk: &SecretKey) -> RowMajorMatrix<Val> {
         let packed = pack_key(sk);
         let bits = sk.as_bits().iter().map(|&bit| Val::from_bool(bit == 1));
