@@ -14,6 +14,7 @@ silent-ot = []
 
 [dependencies]
 pool-prf = { workspace = true }
+pool-eval = { workspace = true }
 cryprot-core = { workspace = true }
 cryprot-net = { workspace = true }
 cryprot-ot = { workspace = true }

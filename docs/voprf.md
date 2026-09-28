@@ -81,15 +81,15 @@ and `sk_i` (which `pk` fixes), so the proof can tie `b_i` to `b̄_i`.
 
 The inputs to the equation, and where the server gets each:
 
-| symbol             | where the server gets it                                       | in the proof | constraint |
-| ------------------ | -------------------------------------------------------------- | ------------ | ---------- |
-| `j`                | the position in the response, `0 .. Δ-1`                       | public       |            |
-| `e_i`              | from the client, in Request                                    | public       |            |
-| `b̄′`               | from the client, in Request                                    | public       |            |
-| `b̄_i`              | its own, sent to the client in preprocessing step 4            | public       |            |
-| `sk_i`             | its own key, from setup                                        | witness      | (K)        |
-| `r_{b_i, i}`       | one mask, as receiver of the random OT of preprocessing step 2 | witness      | (S)        |
-| `r′_0 .. r′_{Δ-1}` | all Δ pads, as sender of the random OT of preprocessing step 3 | witness      | (P)        |
+| symbol             | domain        | where the server gets it                                       | in the proof | constraint |
+| ------------------ | ------------- | -------------------------------------------------------------- | ------------ | ---------- |
+| `j`                | `ℤ_Δ`         | the position in the response, `0 .. Δ-1`                       | public       |            |
+| `e_i`              | `ℤ_q`         | from the client, in Request                                    | public       |            |
+| `b̄′`               | `ℤ_Δ`         | from the client, in Request                                    | public       |            |
+| `b̄_i`              | `{0, 1}`      | its own, sent to the client in preprocessing step 4            | public       |            |
+| `sk_i`             | `{0, 1}`      | its own key, from setup                                        | witness      | (K)        |
+| `r_{b_i, i}`       | `ℤ_q`         | one mask, as receiver of the random OT of preprocessing step 2 | witness      | (S)        |
+| `r′_0 .. r′_{Δ-1}` | each in `ℤ_p` | all Δ pads, as sender of the random OT of preprocessing step 3 | witness      | (P)        |
 
 Plus the operations, the sum, `mod q`, the rounding and `mod p`, which the
 server could do wrong too - those are constraints (A) and (R).
@@ -148,7 +148,9 @@ forced to commit to the right value for all of them. The client checks
 
 (R) checks that every `y_j` is computed correctly. The proof has no `mod`
 or rounding of its own, but `q`, `p` and `Δ` are powers of two, so each is a
-matter of bit arithmetic.
+matter of bit arithmetic. (R) checks the arithmetic only. It takes `ã_Σ` and
+`r′` as given, without checking that they are in `ℤ_q` and `ℤ_p` - (A) and
+(P) fix them.
 
 Every value in the equation is fixed, by (K), (S) and (P), and the
 equation itself is checked, by (A) and (R). All Δ entries are then what an

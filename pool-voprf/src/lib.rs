@@ -3,6 +3,7 @@
 pub mod commitment;
 pub mod key;
 pub mod proof;
+pub mod response;
 
 #[cfg(feature = "plonky3")]
 pub mod plonky3;

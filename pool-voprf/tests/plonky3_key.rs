@@ -77,7 +77,9 @@ fn rejects_a_tampered_proof() {
     let mut bytes = bincode::serialize(&proof).expect("serializing");
     let at = bytes.len() / 3;
     bytes[at] ^= 0x42;
-    if let Ok(proof) = bincode::deserialize(&bytes) {
-        assert!(verifier().verify(&statement, &proof).is_err());
-    }
+    let rejected = match bincode::deserialize(&bytes) {
+        Ok(proof) => verifier().verify(&statement, &proof).is_err(),
+        Err(_) => true,
+    };
+    assert!(rejected);
 }

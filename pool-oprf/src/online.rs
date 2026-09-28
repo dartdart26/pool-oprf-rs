@@ -15,10 +15,9 @@
 
 use crate::preprocessing::{ClientState, ServerState, Uid, tau_for};
 use pool_prf::hash::{ZqMatrix, hash_to_zq_matrix};
-use pool_prf::modular::{add_p, reduce_delta, reduce_q, sub_delta, sub_p, sub_q};
+use pool_prf::modular::{reduce_delta, reduce_q, sub_delta, sub_p, sub_q};
 use pool_prf::params::{DELTA, DELTA_ZQ, H_ROWS, N, OUTPUT_ELEMENTS, Q, Zdelta, Zp, Zq, ZqAccum};
 use pool_prf::prf::{PrfOutput, SecretKey};
-use pool_prf::round::round_zq_to_zp;
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -369,13 +368,7 @@ fn blind_eval_evaluation(
         let ctr = first_slot + k as u64;
         let a_sigma = reduce_q(a_tilde_acc[k]);
 
-        let pads = state.s_s(ctr);
-        let mut y = [0 as Zp; DELTA];
-        for (i, y_i) in y.iter_mut().enumerate() {
-            let rounded = round_zq_to_zp(sub_q(a_sigma, i as Zq));
-            let pad = pads[sub_delta(i as Zdelta, reqs[k].b_bar_prime) as usize];
-            *y_i = add_p(rounded, pad);
-        }
+        let y = pool_eval::respond(a_sigma, state.s_s(ctr), reqs[k].b_bar_prime);
 
         out.push(RowResponse { y, ctr });
     }
