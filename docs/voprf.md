@@ -1,10 +1,11 @@
-# Pool VOPRF: the server's proof
+# Pool VOPRF: the server's proofs
 
 - [1. What this is](#1-what-this-is)
 - [2. Symbols, and how to read them](#2-symbols-and-how-to-read-them)
 - [3. What the server can fake](#3-what-the-server-can-fake)
 - [4. What the server proves](#4-what-the-server-proves)
   - [The equation](#the-equation)
+  - [Three proofs](#three-proofs)
   - [The statement](#the-statement)
 - [5. Why zero-knowledge](#5-why-zero-knowledge)
 - [6. To the full protocol](#6-to-the-full-protocol)
@@ -38,7 +39,7 @@ maliciously secure OT, which behaves like that box even when one party
 cheats. [Section 8](#8-the-ot-underneath) says which OT gives that. That
 leaves the server with three messages in the whole protocol: `pk` once, `b̄`
 in preprocessing and `y` in every evaluation. Those are all it can fake, and
-the proof covers exactly those.
+the proofs cover exactly those.
 
 ## 2. Symbols, and how to read them
 
@@ -98,9 +99,29 @@ The client reads one entry of the response, `y_{j*}`, at an index `j*` that
 only it knows. The server does not know `j*`, so it has to prove the
 equation for `y_j` at every `j`, not just at `j*`.
 
+### Three proofs
+
+The server proves in three places.
+
+- At setup, when it publishes `pk`: that `pk` commits to a binary vector (K).
+- At the end of preprocessing, after it has sent `b̄`: that it holds the
+  key behind `pk` (K) and the masks that go with `b̄` (S). Neither
+  changes from one evaluation to the next.
+- Online, with every response: that `y` is right, by (A), (R) and (P).
+
+The last two proofs both use `sk` and the masks. To tie them together, (K)
+and (M) are in both: (K) opens `pk`, and (M) opens `m`, a commitment to the
+masks the server sends at the end of preprocessing.
+
+```
+setup proof:           (K)
+preprocessing proof:   (K) (S) (M)
+online proof:          (K) (M) (P) (A) (R)
+```
+
 ### The statement
 
-Five constraints. What the client holds is public and what only the server
+Six constraints. What the client holds is public and what only the server
 holds is the witness.
 
 ```
@@ -126,6 +147,15 @@ committed key and with the `b̄_i` the server sent in preprocessing, not one
 the server picks.
 
 ```
+(M)  r_{b_1, 1} .. r_{b_n, n} open m
+```
+
+`m` is one commitment by the server to all `n` masks together, as one
+input, not one commitment per mask. (M) is in the preprocessing proof and
+in the online proof, so the masks the preprocessing proof checks in (S) are
+the masks the online proof uses in (A).
+
+```
 (P)  r′_0 .. r′_{Δ-1} open d_0 .. d_{Δ-1}
 ```
 
@@ -140,7 +170,8 @@ forced to commit to the right value for all of them. The client checks
 ```
 
 (A) checks that `ã_Σ` is computed correctly. A circuit has no `if`, so
-`ã_i` is written `sk_i*(e_i - r_{b_i, i}) + (1 - sk_i)*r_{b_i, i}`.
+`ã_i` is written `sk_i*(e_i - r_{b_i, i}) + (1 - sk_i)*r_{b_i, i}`. It takes
+`sk` and the masks as given - (K) and (M), in the same proof, fix them.
 
 ```
 (R)  y_j = ⌈(ã_Σ - j) mod q⌋ + r′_{(j - b̄′) mod Δ}      mod p,   j = 0 .. Δ-1
@@ -152,10 +183,6 @@ matter of bit arithmetic. (R) checks the arithmetic only. It takes `ã_Σ` and
 `r′` as given, without checking that they are in `ℤ_q` and `ℤ_p` - (A) and
 (P) fix them.
 
-Every value in the equation is fixed, by (K), (S) and (P), and the
-equation itself is checked, by (A) and (R). All Δ entries are then what an
-honest server would send.
-
 ## 5. Why zero-knowledge
 
 Every part of the witness gives away the key:
@@ -166,16 +193,16 @@ Every part of the witness gives away the key:
 - `r′_0 .. r′_{Δ-1}`: the client holds `r′_{b′}` only, and having the
   other Δ - 1 pads gives it the key too.
 
-Therefore, the proof must be zero-knowledge.
+Therefore, the proofs must be zero-knowledge.
 
 ## 6. To the full protocol
 
 Section 1 simplified to one output element and `τ = 1`. In full, one
 evaluation is 16 runs of the protocol, for a 128-bit output, and one
 preprocessing serves `τ` evaluations, each with its own masks from the same
-OT, so `16·τ` runs. (A), (R) and (P) are proven per run: 16 times per
-evaluation, `16·τ` times per preprocessing. (K) and (S) do not depend on the
-evaluation and are proven once per preprocessing.
+OT, so `16·τ` runs. The online proof is per run: 16 times per evaluation,
+`16·τ` times per preprocessing. The preprocessing proof does not depend on
+the evaluation and is made once per preprocessing.
 
 ## 7. Which proof system
 
