@@ -1425,6 +1425,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
+name = "pool-eval"
+version = "0.1.0"
+dependencies = [
+ "pool-prf",
+]
+
+[[package]]
 name = "pool-oprf"
 version = "0.1.0"
 dependencies = [
@@ -1437,6 +1444,7 @@ dependencies = [
  "cryprot-net",
  "cryprot-ot",
  "futures",
+ "pool-eval",
  "pool-prf",
  "rand",
  "serde",
@@ -1510,6 +1518,7 @@ dependencies = [
  "p3-poseidon2-air",
  "p3-symmetric",
  "p3-uni-stark",
+ "pool-eval",
  "pool-prf",
  "rand",
  "serde",

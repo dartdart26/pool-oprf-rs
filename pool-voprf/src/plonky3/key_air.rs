@@ -25,11 +25,11 @@
 
 use crate::commitment::{DIGEST_ELEMENTS, RATE, WIDTH};
 use crate::key::{
-    BITS_PER_ELEMENT, INPUT_ELEMENTS, KeyCommitment, KeyStatement, PACKED_KEY_ELEMENTS, commit,
-    elements, pack_key,
+    BITS_PER_ELEMENT, INPUT_ELEMENTS, KeyCommitment, KeyStatement, PACKED_KEY_ELEMENTS, elements,
+    pack_key,
 };
-use crate::plonky3::{Plonky3, Proof, ProveError, Val, VerifyError};
-use crate::proof::ProofSystem;
+use crate::plonky3::{Plonky3, Proof, ProveError, ROWS, Val, VerifyError};
+use crate::proof::{ProofSystem, Statement};
 use core::array;
 use core::borrow::Borrow;
 use core::ops::Range;
@@ -105,10 +105,6 @@ const fn permutation_columns(index: usize) -> Range<usize> {
     let start = N + index * PERMUTATION_COLS;
     start..start + PERMUTATION_COLS
 }
-
-/// How many times the row is repeated. Must be a power of 2.
-/// Needed for hiding.
-const ROWS: usize = 256;
 
 /// The rules for (K). Its public value is `pk`.
 #[derive(Default)]
@@ -246,7 +242,7 @@ impl ProofSystem<KeyStatement> for Plonky3 {
     type VerifyError = VerifyError;
 
     fn prove(&self, statement: &KeyStatement, sk: &SecretKey) -> Result<Proof, ProveError> {
-        if commit(sk) != statement.pk {
+        if !statement.holds_for(sk) {
             return Err(ProveError::WrongWitness);
         }
         let trace = KeyAir::trace(sk);
@@ -262,7 +258,8 @@ impl ProofSystem<KeyStatement> for Plonky3 {
 mod tests {
     use super::*;
     use crate::commitment::sponge;
-    use p3_air::check_constraints;
+    use crate::key::commit;
+    use p3_air::check_all_constraints;
     use p3_matrix::Matrix;
     use p3_symmetric::CryptographicHasher;
     use rand::SeedableRng;
@@ -303,18 +300,17 @@ mod tests {
         let statement = KeyStatement::for_key(&sk);
 
         let mut trace = KeyAir::trace(&sk);
-        check_constraints(&KeyAir, &trace, &statement.pk.0);
+        assert!(check_all_constraints(&KeyAir, &trace, &statement.pk.0, None).is_ok());
         for row in trace.values.chunks_mut(NUM_COLS) {
             row[0] = Val::TWO;
             row[1] = Val::ZERO;
         }
-        let refused =
-            std::panic::catch_unwind(|| check_constraints(&KeyAir, &trace, &statement.pk.0));
-        let message = refused
-            .expect_err("refused")
-            .downcast::<String>()
-            .expect("a message");
-        assert!(message.contains("failed constraints = [#0]"), "{message}");
+        let failures = check_all_constraints(&KeyAir, &trace, &statement.pk.0, None).failures;
+        assert!(!failures.is_empty());
+        assert!(
+            failures.iter().all(|failure| failure.constraint == 0),
+            "{failures:?}"
+        );
     }
 
     #[test]
