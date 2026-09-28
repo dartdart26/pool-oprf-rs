@@ -22,7 +22,7 @@ pub fn round_zq_to_zp(v: Zq) -> Zp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::params::P;
+    use crate::params::ZP_MAX;
 
     #[test]
     fn rounding_boundaries() {
@@ -42,7 +42,7 @@ mod tests {
         // One past that tie rounds up to 2.
         assert_eq!(round_zq_to_zp(DELTA_ZQ + HALF + 1), 2);
         // The last value that maps to p - 1.
-        assert_eq!(round_zq_to_zp(Q - DELTA_ZQ + HALF), (P - 1) as Zp);
+        assert_eq!(round_zq_to_zp(Q - DELTA_ZQ + HALF), ZP_MAX);
         // Everything past that tie rounds up to p, which wraps to 0.
         for v in Q - HALF + 1..Q {
             assert_eq!(round_zq_to_zp(v), 0, "v={v}");

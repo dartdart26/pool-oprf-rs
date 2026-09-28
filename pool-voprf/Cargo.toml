@@ -25,6 +25,7 @@ parallel = ["plonky3", "p3-maybe-rayon/parallel"]
 
 [dependencies]
 pool-prf = { workspace = true }
+pool-eval = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 zeroize = { workspace = true }

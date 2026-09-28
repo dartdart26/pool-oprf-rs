@@ -10,6 +10,9 @@ use serde::de::DeserializeOwned;
 
 pub trait Statement {
     type Witness;
+
+    /// Whether `witness` satisfies the statement.
+    fn holds_for(&self, witness: &Self::Witness) -> bool;
 }
 
 /// A proof system for one kind of statement.
