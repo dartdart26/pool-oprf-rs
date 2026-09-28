@@ -8,7 +8,8 @@
 
 use crate::commitment::{Commitment, Domain, Element};
 use crate::proof::Statement;
-use p3_field::{PrimeCharacteristicRing, PrimeField32};
+use p3_field::PrimeField32;
+use p3_field::integers::QuotientMap;
 use pool_prf::params::N;
 use pool_prf::prf::SecretKey;
 use serde::{Deserialize, Serialize};
@@ -39,7 +40,7 @@ pub fn pack_key(sk: &SecretKey) -> Zeroizing<[u32; PACKED_KEY_ELEMENTS]> {
 
 /// A packed key as elements.
 pub fn elements(packed: &[u32; PACKED_KEY_ELEMENTS]) -> [Element; PACKED_KEY_ELEMENTS] {
-    packed.map(Element::from_u32)
+    packed.map(Element::from_int)
 }
 
 /// Commit to a key.
@@ -61,6 +62,10 @@ impl KeyStatement {
 
 impl Statement for KeyStatement {
     type Witness = SecretKey;
+
+    fn holds_for(&self, sk: &SecretKey) -> bool {
+        Self::for_key(sk) == *self
+    }
 }
 
 #[cfg(test)]

@@ -1,0 +1,12 @@
+[package]
+name = "pool-eval"
+version = "0.1.0"
+edition = "2024"
+description = "The equations of Pool's blind evaluation"
+license = "MIT"
+
+[dependencies]
+pool-prf = { workspace = true }
+
+[lints]
+workspace = true

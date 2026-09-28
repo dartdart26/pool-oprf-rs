@@ -5,7 +5,7 @@
 
 use core::iter;
 use p3_baby_bear::{BabyBear, Poseidon2BabyBear, default_babybear_poseidon2_32};
-use p3_field::PrimeCharacteristicRing;
+use p3_field::integers::QuotientMap;
 use p3_symmetric::{CryptographicHasher, PaddingFreeSponge};
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +44,7 @@ pub struct Commitment<const DOMAIN: u32, const LEN: usize>(pub(crate) [Element; 
 
 impl<const DOMAIN: u32, const LEN: usize> Commitment<DOMAIN, LEN> {
     pub fn domain() -> Element {
-        Element::from_u32(DOMAIN)
+        Element::from_int(DOMAIN)
     }
 
     pub fn input<T: From<Element>>(elements: [T; LEN]) -> impl Iterator<Item = T> {
@@ -61,7 +61,7 @@ mod tests {
     use super::*;
 
     fn elements<const N: usize>(values: [u32; N]) -> [Element; N] {
-        values.map(Element::from_u32)
+        values.map(Element::from_int)
     }
 
     #[test]

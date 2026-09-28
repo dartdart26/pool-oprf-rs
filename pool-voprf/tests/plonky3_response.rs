@@ -1,11 +1,11 @@
 #![cfg(feature = "plonky3")]
 
-use pool_prf::prf::SecretKey;
-use pool_voprf::key::KeyStatement;
+use pool_prf::params::{DELTA, Q, Zdelta};
 use pool_voprf::plonky3::{Plonky3, ProveError, VerifyError};
 use pool_voprf::proof::ProofSystem;
-use rand::SeedableRng;
+use pool_voprf::response::{ResponseStatement, ResponseWitness};
 use rand::rngs::StdRng;
+use rand::{RngExt, SeedableRng};
 use std::time::Instant;
 
 fn prover() -> Plonky3 {
@@ -16,13 +16,26 @@ fn verifier() -> Plonky3 {
     Plonky3::from_rng(&mut StdRng::seed_from_u64(2))
 }
 
+/// A random statement and its witness, from `seed`.
+fn random(seed: u64) -> (ResponseStatement, ResponseWitness) {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let witness = ResponseWitness {
+        a_sigma_sum: rng.random_range(0..Q),
+        pads: rng.random(),
+    };
+    let b_bar_prime = rng.random_range(0..DELTA as Zdelta);
+    (
+        ResponseStatement::for_witness(&witness, b_bar_prime),
+        witness,
+    )
+}
+
 #[test]
-fn proves_and_verifies_the_committed_key() {
-    let sk = SecretKey::random(&mut StdRng::seed_from_u64(2));
-    let statement = KeyStatement::for_key(&sk);
+fn proves_and_verifies_the_response() {
+    let (statement, witness) = random(2);
 
     let started = Instant::now();
-    let proof = prover().prove(&statement, &sk).expect("proving");
+    let proof = prover().prove(&statement, &witness).expect("proving");
     let proving = started.elapsed();
     let bytes = bincode::serialize(&proof).expect("serializing");
 
@@ -37,33 +50,30 @@ fn proves_and_verifies_the_committed_key() {
 }
 
 #[test]
-fn refuses_to_prove_with_a_key_that_does_not_open_pk() {
-    let sk = SecretKey::random(&mut StdRng::seed_from_u64(3));
-    let other = SecretKey::random(&mut StdRng::seed_from_u64(4));
+fn refuses_to_prove_with_a_witness_of_another_response() {
+    let (_, witness) = random(3);
+    let (other_statement, _) = random(4);
     assert!(matches!(
-        prover().prove(&KeyStatement::for_key(&other), &sk),
+        prover().prove(&other_statement, &witness),
         Err(ProveError::WrongWitness)
     ));
 }
 
 #[test]
-fn rejects_the_commitment_of_another_key() {
-    let sk = SecretKey::random(&mut StdRng::seed_from_u64(5));
-    let other = SecretKey::random(&mut StdRng::seed_from_u64(6));
-    let proof = prover()
-        .prove(&KeyStatement::for_key(&sk), &sk)
-        .expect("proving");
+fn rejects_another_response() {
+    let (statement, witness) = random(5);
+    let (other_statement, _) = random(6);
+    let proof = prover().prove(&statement, &witness).expect("proving");
     assert!(matches!(
-        verifier().verify(&KeyStatement::for_key(&other), &proof),
+        verifier().verify(&other_statement, &proof),
         Err(VerifyError::Invalid(_))
     ));
 }
 
 #[test]
 fn proof_ser_deser() {
-    let sk = SecretKey::random(&mut StdRng::seed_from_u64(7));
-    let statement = KeyStatement::for_key(&sk);
-    let proof = prover().prove(&statement, &sk).expect("proving");
+    let (statement, witness) = random(7);
+    let proof = prover().prove(&statement, &witness).expect("proving");
     let bytes = bincode::serialize(&proof).expect("serializing");
     let proof = bincode::deserialize(&bytes).expect("deserializing");
     verifier().verify(&statement, &proof).expect("verifying");
@@ -71,9 +81,8 @@ fn proof_ser_deser() {
 
 #[test]
 fn rejects_a_tampered_proof() {
-    let sk = SecretKey::random(&mut StdRng::seed_from_u64(8));
-    let statement = KeyStatement::for_key(&sk);
-    let proof = prover().prove(&statement, &sk).expect("proving");
+    let (statement, witness) = random(8);
+    let proof = prover().prove(&statement, &witness).expect("proving");
     let mut bytes = bincode::serialize(&proof).expect("serializing");
     let at = bytes.len() / 3;
     bytes[at] ^= 0x42;

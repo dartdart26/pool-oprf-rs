@@ -4,8 +4,10 @@
 //! commitment scheme.
 
 mod key_air;
+mod response_air;
 
 pub use key_air::KeyAir;
+pub use response_air::ResponseAir;
 
 use crate::commitment;
 use p3_baby_bear::{Poseidon2BabyBear, default_babybear_poseidon2_16};
@@ -73,6 +75,10 @@ pub type Proof = p3_uni_stark::Proof<Config>;
 
 /// Random columns masking the trace; at least the challenge dimension.
 const NUM_RANDOM_CODEWORDS: usize = CHALLENGE_DIMENSION;
+
+/// How many times a circuit repeats its one row. Must be a power of 2.
+/// Needed for hiding.
+const ROWS: usize = 256;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProveError {

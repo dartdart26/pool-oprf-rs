@@ -18,6 +18,7 @@ s2n-quic.
 | crate           | what                                                        |
 | --------------- | ----------------------------------------------------------- |
 | `pool-prf`      | the plaintext PRF, parameters                               |
+| `pool-eval`     | the blind evaluation equations                              |
 | `pool-oprf`     | the OPRF: OT preprocessing, blind evaluation, client/server |
 | `pool-psi`      | PSI library on top of pool-oprf                             |
 | `pool-psi-cli`  | a generic PSI client and server based on pool-psi           |

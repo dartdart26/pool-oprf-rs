@@ -46,6 +46,9 @@ pub type Zp = u8;
 /// `Zp` holds elements of [0, P), so the largest is P - 1.
 const _: () = assert!(P - 1 <= Zp::MAX as Zq, "P must fit Zp");
 
+/// The largest element of ℤ_p.
+pub const ZP_MAX: Zp = (P - 1) as Zp;
+
 /// Element of ℤ_Δ, used as a choice index for a 1-out-of-Δ OT, in [0, Δ).
 pub type Zdelta = u8;
 
