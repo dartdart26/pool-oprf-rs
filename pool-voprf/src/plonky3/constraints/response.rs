@@ -85,17 +85,14 @@
 //! y_j = ⌈t_j⌋ + pad_j - p·carry
 //! ```
 
-use crate::plonky3::{Plonky3, Proof, ProveError, ROWS, Val, VerifyError};
-use crate::proof::{ProofSystem, Statement};
-use crate::response::{ResponseStatement, ResponseWitness};
+use crate::plonky3::{ROWS, Val};
 use p3_air::utils::pack_bits_le;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
 use p3_field::PrimeCharacteristicRing;
 use p3_field::integers::QuotientMap;
 use p3_matrix::dense::RowMajorMatrix;
-use p3_uni_stark::{prove, verify};
 use pool_prf::modular::sub_q;
-use pool_prf::params::{DELTA, DELTA_ZQ, LOG_DELTA, LOG_Q, P, Q, Zdelta, Zq};
+use pool_prf::params::{DELTA, DELTA_ZQ, LOG_DELTA, LOG_Q, P, Q, Zdelta, Zp, Zq};
 
 const T_BITS: usize = LOG_Q as usize;
 /// The bits of `t_j`, `wrapped`, `pad_j`, `carry`.
@@ -117,14 +114,14 @@ fn up<AB: AirBuilder>(m: &[AB::Var]) -> AB::Expr {
 pub struct ResponseAir;
 
 impl ResponseAir {
-    pub fn trace(witness: &ResponseWitness, b_bar_prime: Zdelta) -> RowMajorMatrix<Val> {
-        let mut row = vec![Val::from_int(witness.a_sigma_sum)];
+    pub fn trace(a_sigma_sum: Zq, pads: &[Zp; DELTA], b_bar_prime: Zdelta) -> RowMajorMatrix<Val> {
+        let mut row = vec![Val::from_int(a_sigma_sum)];
         for j in 0..DELTA {
-            let t = sub_q(witness.a_sigma_sum, j as Zq);
-            let wrapped = witness.a_sigma_sum < j as Zq;
+            let t = sub_q(a_sigma_sum, j as Zq);
+            let wrapped = a_sigma_sum < j as Zq;
             let up = (t % DELTA_ZQ) > DELTA_ZQ / 2;
             let rounded = t / DELTA_ZQ + Zq::from(up);
-            let pad = pool_eval::pad(&witness.pads, j, b_bar_prime);
+            let pad = pool_eval::pad(pads, j, b_bar_prime);
             let carry = (rounded + Zq::from(pad)) >= P;
             row.extend((0..T_BITS).map(|k| Val::from_int((t >> k) & 1)));
             row.push(Val::from_bool(wrapped));
@@ -183,31 +180,8 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for ResponseAir {
     }
 }
 
-fn public_values(statement: &ResponseStatement) -> [Val; DELTA] {
-    statement.y.map(Val::from_int)
-}
-
-impl ProofSystem<ResponseStatement> for Plonky3 {
-    type Proof = Proof;
-    type ProveError = ProveError;
-    type VerifyError = VerifyError;
-
-    fn prove(
-        &self,
-        statement: &ResponseStatement,
-        witness: &ResponseWitness,
-    ) -> Result<Proof, ProveError> {
-        if !statement.holds_for(witness) {
-            return Err(ProveError::WrongWitness);
-        }
-        let trace = ResponseAir::trace(witness, statement.b_bar_prime);
-        prove(&self.config, &ResponseAir, trace, &public_values(statement))
-            .map_err(ProveError::Prover)
-    }
-
-    fn verify(&self, statement: &ResponseStatement, proof: &Proof) -> Result<(), VerifyError> {
-        Plonky3::verified(|| verify(&self.config, &ResponseAir, proof, &public_values(statement)))
-    }
+pub fn public_values(y: &[Zp; DELTA]) -> [Val; DELTA] {
+    y.map(Val::from_int)
 }
 
 #[cfg(test)]
@@ -218,23 +192,18 @@ mod tests {
     use rand::rngs::StdRng;
     use rand::{RngExt, SeedableRng};
 
-    /// A random statement and its witness, from `seed`.
-    fn random(seed: u64) -> (ResponseStatement, ResponseWitness) {
+    /// A random `ã_Σ`, pads and `b̄′`, from `seed`.
+    fn random(seed: u64) -> (Zq, [Zp; DELTA], Zdelta) {
         let mut rng = StdRng::seed_from_u64(seed);
-        let witness = ResponseWitness {
-            a_sigma_sum: rng.random_range(0..Q),
-            pads: rng.random(),
-        };
+        let a_sigma_sum = rng.random_range(0..Q);
+        let pads = rng.random();
         let b_bar_prime = rng.random_range(0..DELTA as Zdelta);
-        (
-            ResponseStatement::for_witness(&witness, b_bar_prime),
-            witness,
-        )
+        (a_sigma_sum, pads, b_bar_prime)
     }
 
-    /// Runs the rules over `trace` for `statement`.
-    fn report(trace: &RowMajorMatrix<Val>, statement: &ResponseStatement) -> ConstraintReport {
-        check_all_constraints(&ResponseAir, trace, &public_values(statement), None)
+    /// Runs the rules over `trace` for `y`.
+    fn report(trace: &RowMajorMatrix<Val>, y: &[Zp; DELTA]) -> ConstraintReport {
+        check_all_constraints(&ResponseAir, trace, &public_values(y), None)
     }
 
     /// An honest trace passes the rules wherever a bit of it flips.
@@ -250,11 +219,10 @@ mod tests {
         let random: Vec<Zq> = (0..8).map(|_| rng.random_range(0..Q)).collect();
         for a_sigma_sum in below_delta.chain(near_q).chain(random) {
             for pads in [[0; DELTA], [ZP_MAX; DELTA], rng.random()] {
-                let witness = ResponseWitness { a_sigma_sum, pads };
-                let statement = ResponseStatement::for_witness(&witness, 0);
-                let trace = ResponseAir::trace(&witness, 0);
+                let y = pool_eval::respond(a_sigma_sum, &pads, 0);
+                let trace = ResponseAir::trace(a_sigma_sum, &pads, 0);
                 assert!(
-                    report(&trace, &statement).is_ok(),
+                    report(&trace, &y).is_ok(),
                     "ã_Σ = {a_sigma_sum}, pads = {pads:?}"
                 );
             }
@@ -263,11 +231,12 @@ mod tests {
 
     #[test]
     fn every_entry_is_checked() {
-        let (statement, witness) = random(2);
-        let trace = ResponseAir::trace(&witness, statement.b_bar_prime);
+        let (a_sigma_sum, pads, b_bar_prime) = random(2);
+        let y = pool_eval::respond(a_sigma_sum, &pads, b_bar_prime);
+        let trace = ResponseAir::trace(a_sigma_sum, &pads, b_bar_prime);
         for j in 0..DELTA {
-            let mut changed = statement;
-            changed.y[j] ^= 1;
+            let mut changed = y;
+            changed[j] ^= 1;
             assert!(
                 !report(&trace, &changed).is_ok(),
                 "entry {j} is not checked"
@@ -280,53 +249,20 @@ mod tests {
     /// namely constraint 0.
     #[test]
     fn a_bit_that_is_not_a_bit_is_refused() {
-        let witness = ResponseWitness {
-            a_sigma_sum: 3,
-            pads: [0; DELTA],
-        };
-        let statement = ResponseStatement::for_witness(&witness, 0);
-        let mut trace = ResponseAir::trace(&witness, 0);
-        assert!(report(&trace, &statement).is_ok());
+        let pads = [0; DELTA];
+        let y = pool_eval::respond(3, &pads, 0);
+        let mut trace = ResponseAir::trace(3, &pads, 0);
+        assert!(report(&trace, &y).is_ok());
         for row in trace.values.chunks_mut(NUM_COLS) {
             assert_eq!(row[1..3], [Val::ONE, Val::ONE]);
             row[1] = Val::from_int(3);
             row[2] = Val::ZERO;
         }
-        let failures = report(&trace, &statement).failures;
+        let failures = report(&trace, &y).failures;
         assert!(!failures.is_empty());
         assert!(
             failures.iter().all(|failure| failure.constraint == 0),
             "{failures:?}"
         );
-    }
-
-    #[test]
-    fn a_proof_verifies() {
-        let system = Plonky3::from_rng(&mut StdRng::seed_from_u64(1));
-        let (statement, witness) = random(3);
-        let proof = system.prove(&statement, &witness).expect("proving");
-        system.verify(&statement, &proof).expect("verifying");
-    }
-
-    #[test]
-    fn a_wrong_response_does_not_verify() {
-        let system = Plonky3::from_rng(&mut StdRng::seed_from_u64(1));
-        let (statement, witness) = random(3);
-        let proof = system.prove(&statement, &witness).expect("proving");
-        let mut wrong = statement;
-        wrong.y[DELTA - 1] ^= 1;
-        assert!(system.verify(&wrong, &proof).is_err());
-    }
-
-    #[test]
-    fn an_unreduced_a_sigma_sum_is_refused() {
-        let system = Plonky3::from_rng(&mut StdRng::seed_from_u64(1));
-        let (statement, witness) = random(4);
-        let unreduced = ResponseWitness {
-            a_sigma_sum: Q,
-            pads: witness.pads,
-        };
-        let refused = system.prove(&statement, &unreduced);
-        assert!(matches!(refused, Err(ProveError::WrongWitness)));
     }
 }

@@ -1,18 +1,13 @@
-//! Constraint (K) from `docs/voprf.md`: `sk` opens `pk`, and each `sk_i` is
-//! either 0 or 1.
-//!
 //! `pk` is a [`KeyCommitment`] to `sk`.
 //!
 //! [`pack_key`] reads [`BITS_PER_ELEMENT`] bits at a time into an [`Element`],
 //! so that the key becomes the [`Element`]s the commitment takes as input.
 
-use crate::commitment::{Commitment, Domain, Element};
-use crate::proof::Statement;
+use crate::plonky3::commitments::{Commitment, Domain, Element};
 use p3_field::PrimeField32;
 use p3_field::integers::QuotientMap;
 use pool_prf::params::N;
 use pool_prf::prf::SecretKey;
-use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 pub const BITS_PER_ELEMENT: usize = Element::ORDER_U32.ilog2() as usize;
@@ -48,23 +43,11 @@ pub fn commit(sk: &SecretKey) -> KeyCommitment {
     KeyCommitment::commit(elements(&pack_key(sk)))
 }
 
-/// Constraint (K) as a statement - `pk` is public, the key is the witness.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-pub struct KeyStatement {
-    pub pk: KeyCommitment,
-}
+impl crate::traits::Commitment for KeyCommitment {
+    type Value = SecretKey;
 
-impl KeyStatement {
-    pub fn for_key(sk: &SecretKey) -> Self {
-        Self { pk: commit(sk) }
-    }
-}
-
-impl Statement for KeyStatement {
-    type Witness = SecretKey;
-
-    fn holds_for(&self, sk: &SecretKey) -> bool {
-        Self::for_key(sk) == *self
+    fn commit(sk: &SecretKey) -> Self {
+        commit(sk)
     }
 }
 
