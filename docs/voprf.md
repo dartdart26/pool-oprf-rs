@@ -6,8 +6,8 @@
 - [4. What the server proves](#4-what-the-server-proves)
   - [The equation](#the-equation)
   - [Splitting the sum](#splitting-the-sum)
-  - [Three proofs](#three-proofs)
-  - [The statement](#the-statement)
+  - [Three statements](#three-statements)
+  - [The constraints](#the-constraints)
 - [5. Why zero-knowledge](#5-why-zero-knowledge)
 - [6. To the full protocol](#6-to-the-full-protocol)
 - [7. Which proof system](#7-which-proof-system)
@@ -63,6 +63,11 @@ whatever it does wrong shows up in one of them or not at all. It can fake
 any of them undetected, since an OPRF output looks random either way.
 
 ## 4. What the server proves
+
+- A *constraint* is one relation between values, such as (A) below.
+- A *statement* is public values, a witness and the constraints that tie
+  them.
+- A *proof* shows that a statement holds.
 
 ### The equation
 
@@ -123,17 +128,16 @@ preprocessing proof shows that the masks are the right ones (S), that
 `r̃_Σ` is their sum (T) and that `m` commits to it (M). The online proof
 opens `m` (M) and uses `r̃_Σ` in (A): one number in place of `n` masks.
 
-### Three proofs
+### Three statements
 
-The server proves in three places.
+The server proves three statements, with one proof for each. The
+constraints are in [The constraints](#the-constraints).
 
-- At setup, when it publishes `pk`: that `pk` commits to a binary vector (K).
-- At the end of preprocessing, after it has sent `b̄` and `m`: that it
-  holds the key behind `pk` (K), the masks that go with `b̄` (S), and that
-  `r̃_Σ` comes from them (T) and is what `m` commits to (M). None of that
-  changes from one evaluation to the next.
-- Online, with every response: that `y` is right, by (A), (R) and (P),
-  from the `sk` behind `pk` (K) and the `r̃_Σ` behind `m` (M).
+| statement     | when the server proves it                                  | constraints         |
+| ------------- | ---------------------------------------------------------- | ------------------- |
+| setup         | at setup, when it publishes `pk`                           | (K)                 |
+| preprocessing | at the end of preprocessing, after it has sent `b̄` and `m` | (K) (S) (T) (M)     |
+| online        | with every response                                        | (K) (M) (P) (A) (R) |
 
 (S) could be checked online as well, since `b̄` is public in both proofs.
 It is not, because of cost: (S) is `n` commitment openings. (S) needs nothing
@@ -144,21 +148,17 @@ tie them together, (K) and (M) are in both: (K) opens `pk`, and (M) opens
 `m`. Without (M) the server could pass (S) and (T) with the right masks
 and then use any `r̃_Σ` in (A).
 
-```
-setup proof:           (K)
-preprocessing proof:   (K) (S) (T) (M)
-online proof:          (K) (M) (P) (A) (R)
-```
-
-### The statement
+### The constraints
 
 Seven constraints. What the client holds is public and what only the server
 holds is the witness.
 
 A commitment is a hash, and hides its value only if the value is too big
-to guess. `sk` is big enough at `n` bits A mask, a pad or `r̃_Σ` is not as each is one
-number in `ℤ_q` or `ℤ_p`. So every commitment other than `pk` hashes a random value
-in with the committed one and the constraint that opens it has the random value in the witness.
+to guess. `sk` is big enough at `n` bits. A mask, a pad or `r̃_Σ` is not,
+as each is one number in `ℤ_q` or `ℤ_p`. So every commitment other than
+`pk` hashes a random value in with the committed one and the constraint
+that opens it has the random value in the witness. For a mask or a pad
+the random value comes from the OT.
 
 ```
 (K)  sk opens pk,   each sk_i in {0, 1}
