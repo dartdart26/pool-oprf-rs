@@ -5,9 +5,11 @@
 
 pub mod commitments;
 pub mod constraints;
+pub mod sponge;
 mod statements;
 
 pub use constraints::key::KeyAir;
+pub use constraints::mask_sum::MaskSumAir;
 pub use constraints::response::ResponseAir;
 pub use constraints::sum::SumAir;
 

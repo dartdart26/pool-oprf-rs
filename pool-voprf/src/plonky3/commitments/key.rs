@@ -3,14 +3,11 @@
 //! [`pack_key`] reads [`BITS_PER_ELEMENT`] bits at a time into an [`Element`],
 //! so that the key becomes the [`Element`]s the commitment takes as input.
 
-use crate::plonky3::commitments::{Commitment, Domain, Element};
-use p3_field::PrimeField32;
+use crate::plonky3::commitments::{BITS_PER_ELEMENT, Commitment, Domain, Element};
 use p3_field::integers::QuotientMap;
 use pool_prf::params::N;
 use pool_prf::prf::SecretKey;
 use zeroize::Zeroizing;
-
-pub const BITS_PER_ELEMENT: usize = Element::ORDER_U32.ilog2() as usize;
 
 /// `N` bits, [`BITS_PER_ELEMENT`] per element, rounded up. The last element
 /// is padded with zero bits.

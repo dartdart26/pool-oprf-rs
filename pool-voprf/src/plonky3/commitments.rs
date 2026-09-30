@@ -4,15 +4,35 @@
 //! hash to the same output.
 
 pub mod key;
+pub mod mask_sum;
 
-use core::iter;
+use crate::CommitmentRandomness;
+use core::{array, iter};
 use p3_baby_bear::{BabyBear, Poseidon2BabyBear, default_babybear_poseidon2_32};
+use p3_field::PrimeField32;
 use p3_field::integers::QuotientMap;
 use p3_symmetric::{CryptographicHasher, PaddingFreeSponge};
 use serde::{Deserialize, Serialize};
 
 /// The field the commitments live in.
 pub type Element = BabyBear;
+
+/// How many bits a packed value puts in one [`Element`]: every number of
+/// this many bits is below the field's prime.
+pub const BITS_PER_ELEMENT: usize = Element::ORDER_U32.ilog2() as usize;
+
+/// How many elements a random value takes, [`BITS_PER_ELEMENT`] bits each.
+pub const RANDOMNESS_ELEMENTS: usize =
+    (CommitmentRandomness::BITS as usize).div_ceil(BITS_PER_ELEMENT);
+
+/// The random value as [`RANDOMNESS_ELEMENTS`] numbers of
+/// [`BITS_PER_ELEMENT`] bits, lowest first.
+pub fn pack_randomness(randomness: CommitmentRandomness) -> [Element; RANDOMNESS_ELEMENTS] {
+    array::from_fn(|k| {
+        let shifted = randomness >> (k * BITS_PER_ELEMENT);
+        Element::from_int(shifted % (1 << BITS_PER_ELEMENT))
+    })
+}
 
 pub const WIDTH: usize = 32;
 pub const CAPACITY: usize = 8;
@@ -36,6 +56,8 @@ pub fn sponge() -> Sponge {
 pub enum Domain {
     /// (K): the server's key.
     Key = 1,
+    /// (M): `r̃_Σ` and a random value.
+    MaskSum = 2,
 }
 
 /// A commitment of one kind, to `LEN` elements. Both are in the type, such
@@ -61,9 +83,34 @@ impl<const DOMAIN: u32, const LEN: usize> Commitment<DOMAIN, LEN> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use p3_field::PrimeCharacteristicRing;
 
     fn elements<const N: usize>(values: [u32; N]) -> [Element; N] {
         values.map(Element::from_int)
+    }
+
+    #[test]
+    fn randomness_packs_lowest_bits_first() {
+        assert_eq!(pack_randomness(1)[0], Element::ONE);
+        assert_eq!(pack_randomness(1 << BITS_PER_ELEMENT)[1], Element::ONE);
+    }
+
+    /// `count` 1 bits.
+    fn ones(count: usize) -> Element {
+        Element::from_int((1u32 << count) - 1)
+    }
+
+    /// The maximum packs to full elements of ones, then the bits left over.
+    #[test]
+    fn randomness_packs_every_bit() {
+        let packed = pack_randomness(CommitmentRandomness::MAX);
+        let (last, full) = packed.split_last().expect("elements");
+        let left_over = CommitmentRandomness::BITS as usize % BITS_PER_ELEMENT;
+        assert!(
+            full.iter()
+                .all(|&element| element == ones(BITS_PER_ELEMENT))
+        );
+        assert_eq!(*last, ones(left_over));
     }
 
     #[test]
