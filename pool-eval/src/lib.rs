@@ -1,9 +1,39 @@
 //! The equations of the paper's BlindEval.
 
 use core::array;
-use pool_prf::modular::{add_p, sub_delta, sub_q};
-use pool_prf::params::{DELTA, Zdelta, Zp, Zq};
+use pool_prf::modular::{add_p, reduce_q, sub_delta, sub_q};
+use pool_prf::params::{DELTA, N, Zdelta, Zp, Zq, ZqAccum};
+use pool_prf::prf::SecretKey;
 use pool_prf::round::round_zq_to_zp;
+
+/// `r̃_Σ` is the sum with the server's masks added where `sk_i = 0` and
+/// subtracted where `sk_i = 1`:
+///
+/// ```text
+/// r̃_Σ = Σ_i (1 - 2·sk_i)·r_{b_i, i}   mod q
+/// ```
+pub fn r_sigma_sum(sk: &SecretKey, masks: &[Zq; N]) -> Zq {
+    let terms = sk
+        .as_bits()
+        .iter()
+        .zip(masks)
+        .map(|(&sk_i, &r_i)| if sk_i == 0 { r_i } else { sub_q(0, r_i) });
+    reduce_q(terms.map(ZqAccum::from).sum::<ZqAccum>())
+}
+
+/// `ã_Σ`, the server's sum over all coordinates:
+///
+/// ```text
+/// ã_Σ = Σ_i sk_i·e_i + r̃_Σ   mod q
+/// ```
+pub fn a_sigma_sum(sk: &SecretKey, r_sigma_sum: Zq, e: &[Zq; N]) -> Zq {
+    let terms = sk
+        .as_bits()
+        .iter()
+        .zip(e)
+        .map(|(&sk_i, &e_i)| if sk_i == 0 { 0 } else { e_i });
+    reduce_q(terms.map(ZqAccum::from).sum::<ZqAccum>() + ZqAccum::from(r_sigma_sum))
+}
 
 /// `⌈(ã_Σ - j) mod q⌋`, the rounded part of entry `j`.
 pub fn rounded(a_sigma_sum: Zq, j: usize) -> Zp {

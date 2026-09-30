@@ -10,6 +10,14 @@ pub fn reduce_q<T: Into<ZqAccum>>(x: T) -> Zq {
     (x.into() % ZqAccum::from(Q)) as Zq
 }
 
+/// How many whole `q`s fit in an accumulated sum of ℤ_q elements.
+///
+/// Takes anything that fits a ZqAccum.
+#[inline]
+pub fn quotient_q<T: Into<ZqAccum>>(x: T) -> ZqAccum {
+    x.into() / ZqAccum::from(Q)
+}
+
 /// Reduce an accumulated sum of ℤ_p elements back into ℤ_p.
 ///
 /// Takes anything that fits a ZpAccum.
@@ -26,15 +34,15 @@ pub fn reduce_delta<T: Into<Zq>>(x: T) -> Zdelta {
     (x.into() % DELTA_ZQ) as Zdelta
 }
 
-/// `x - y mod Q`.
+/// `x - y mod q`.
 #[inline]
 pub fn sub_q(x: Zq, y: Zq) -> Zq {
     assert!(x < Q && y < Q, "operands must be reduced mod q");
-    // Add Q first so the subtraction cannot go below zero.
+    // Add q first so the subtraction cannot go below zero.
     reduce_q(ZqAccum::from(x) + ZqAccum::from(Q) - ZqAccum::from(y))
 }
 
-/// `x + y mod P`.
+/// `x + y mod p`.
 #[inline]
 pub fn add_p(x: Zp, y: Zp) -> Zp {
     assert!(
@@ -45,7 +53,7 @@ pub fn add_p(x: Zp, y: Zp) -> Zp {
     reduce_p(ZpAccum::from(x) + ZpAccum::from(y))
 }
 
-/// `x - y mod P`.
+/// `x - y mod p`.
 #[inline]
 pub fn sub_p(x: Zp, y: Zp) -> Zp {
     assert!(

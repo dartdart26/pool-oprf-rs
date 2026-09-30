@@ -102,7 +102,7 @@ pub fn evaluate_single_row(sk: &SecretKey, v: &ZqVector) -> Zp {
 /// Compute aᵀsk, the inner product of a ℤ_q vector with a binary secret key.
 ///
 /// Since sk is binary, this is just the sum of v[i] where sk[i] = 1,
-/// reduced mod Q.
+/// reduced mod q.
 pub(crate) fn inner_product(v: &ZqVector, sk: &SecretKey) -> Zq {
     // Since sk is binary, the inner product is just the sum of v[i] where sk[i] = 1.
     let sum: ZqAccum =
