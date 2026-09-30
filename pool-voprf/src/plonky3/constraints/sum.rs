@@ -47,11 +47,11 @@ const A_SIGMA_BITS: usize = LOG_Q as usize;
 const QUOTIENT_BITS: usize = (N + 1).next_power_of_two().ilog2() as usize;
 
 /// Where each part of the row starts.
-const SK: usize = 0;
-const R_SIGMA: usize = SK + N;
-const A_SIGMA: usize = R_SIGMA + 1;
-const QUOTIENT: usize = A_SIGMA + A_SIGMA_BITS;
-const NUM_COLS: usize = QUOTIENT + QUOTIENT_BITS;
+pub(crate) const SK: usize = 0;
+pub(crate) const R_SIGMA: usize = SK + N;
+pub(crate) const A_SIGMA: usize = R_SIGMA + 1;
+pub(crate) const QUOTIENT: usize = A_SIGMA + A_SIGMA_BITS;
+pub(crate) const NUM_COLS: usize = QUOTIENT + QUOTIENT_BITS;
 
 /// Both sides of the sum rule are below this.
 const SUM_BOUND: usize = (Q as usize) << QUOTIENT_BITS;

@@ -158,7 +158,7 @@ to guess. `sk` is big enough at `n` bits. A mask, a pad or `r̃_Σ` is not,
 as each is one number in `ℤ_q` or `ℤ_p`. So every commitment other than
 `pk` hashes a random value in with the committed one and the constraint
 that opens it has the random value in the witness. For a mask or a pad
-the random value comes from the OT.
+the random value comes from the OT. For `m` the server draws it.
 
 ```
 (K)  sk opens pk,   each sk_i in {0, 1}
@@ -192,7 +192,7 @@ then means `b̄_i ⊕ sk_i = b_i`.
 where `sk_i = 1`, as [Splitting the sum](#splitting-the-sum) derives it.
 
 ```
-(M)  r̃_Σ opens m
+(M)  r̃_Σ opens m,   r̃_Σ in ℤ_q
 ```
 
 `m` is the server's commitment to `r̃_Σ`, sent at the end of preprocessing.
@@ -207,7 +207,9 @@ The client holds one pad, `r′_{b′}`, and must not tell the server which, so
 after preprocessing step 3 the server sends commitments `d_0 .. d_{Δ-1}` to
 all its Δ pads. It does not know which one the client will check, so it is
 forced to commit to the right value for all of them. The client checks
-`d_{b′}` against its own pad, so the pad at index `b′` is the client's.
+`d_{b′}` against its own pad, so the pad at index `b′` is the client's. The
+proof opens `d_{b′}` with the `r′_{b′}` that (R) uses, so the client is
+convinced that the pad the server used at index `b′` is its own.
 
 ```
 (A)  ã_Σ = Σ_i sk_i·e_i + r̃_Σ      mod q
