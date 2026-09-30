@@ -98,7 +98,7 @@ const T_BITS: usize = LOG_Q as usize;
 /// The bits of `t_j`, `wrapped`, `pad_j`, `carry`.
 const ENTRY_COLS: usize = T_BITS + 3;
 /// `ã_Σ` and then the `Δ` entries.
-const NUM_COLS: usize = 1 + DELTA * ENTRY_COLS;
+pub(crate) const NUM_COLS: usize = 1 + DELTA * ENTRY_COLS;
 
 /// `up` of step 2, from the bits `m` of the remainder. Lowest bit first in `m`.
 fn up<AB: AirBuilder>(m: &[AB::Var]) -> AB::Expr {

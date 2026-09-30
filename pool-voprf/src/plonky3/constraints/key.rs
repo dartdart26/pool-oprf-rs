@@ -1,9 +1,5 @@
 //! Constraint (K) on Plonky3.
 //!
-//! `commit` writes its input over a zero state of `WIDTH` elements,
-//! permutes it with Poseidon2 and keeps the first `DIGEST_ELEMENTS` of the
-//! result. The rest is dropped.
-//!
 //! In order, Poseidon2 takes `WIDTH` slots:
 //!
 //! | slots                 | content                                   |
@@ -24,65 +20,19 @@
 //!   verifier supplies
 
 use crate::plonky3::commitments::key::{
-    BITS_PER_ELEMENT, INPUT_ELEMENTS, KeyCommitment, PACKED_KEY_ELEMENTS, elements, pack_key,
+    INPUT_ELEMENTS, KeyCommitment, PACKED_KEY_ELEMENTS, elements, pack_key,
 };
-use crate::plonky3::commitments::{DIGEST_ELEMENTS, RATE, WIDTH};
+use crate::plonky3::commitments::{BITS_PER_ELEMENT, DIGEST_ELEMENTS};
+use crate::plonky3::sponge::{
+    PERMUTATION, PERMUTATION_COLS, eval_sponge, permutations, sponge_trace,
+};
 use crate::plonky3::{ROWS, Val};
 use core::array;
-use core::borrow::Borrow;
-use core::ops::Range;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
-use p3_baby_bear::{
-    BABYBEAR_POSEIDON2_HALF_FULL_ROUNDS, BABYBEAR_POSEIDON2_PARTIAL_ROUNDS_32,
-    BABYBEAR_POSEIDON2_RC_32_EXTERNAL_FINAL, BABYBEAR_POSEIDON2_RC_32_EXTERNAL_INITIAL,
-    BABYBEAR_POSEIDON2_RC_32_INTERNAL, BABYBEAR_S_BOX_DEGREE, GenericPoseidon2LinearLayersBabyBear,
-};
 use p3_field::PrimeCharacteristicRing;
 use p3_matrix::dense::RowMajorMatrix;
-use p3_poseidon2_air::{
-    Poseidon2Air, Poseidon2Cols, RoundConstants, generate_trace_rows, num_cols,
-};
-use p3_uni_stark::SubAirBuilder;
 use pool_prf::params::N;
 use pool_prf::prf::SecretKey;
-
-const SBOX_REGISTERS: usize = 1;
-type LinearLayers = GenericPoseidon2LinearLayersBabyBear;
-type PermutationAir = Poseidon2Air<
-    Val,
-    LinearLayers,
-    WIDTH,
-    BABYBEAR_S_BOX_DEGREE,
-    SBOX_REGISTERS,
-    BABYBEAR_POSEIDON2_HALF_FULL_ROUNDS,
-    BABYBEAR_POSEIDON2_PARTIAL_ROUNDS_32,
->;
-type PermutationCols<T> = Poseidon2Cols<
-    T,
-    WIDTH,
-    BABYBEAR_S_BOX_DEGREE,
-    SBOX_REGISTERS,
-    BABYBEAR_POSEIDON2_HALF_FULL_ROUNDS,
-    BABYBEAR_POSEIDON2_PARTIAL_ROUNDS_32,
->;
-const CONSTANTS: RoundConstants<
-    Val,
-    WIDTH,
-    BABYBEAR_POSEIDON2_HALF_FULL_ROUNDS,
-    BABYBEAR_POSEIDON2_PARTIAL_ROUNDS_32,
-> = RoundConstants::new(
-    BABYBEAR_POSEIDON2_RC_32_EXTERNAL_INITIAL,
-    BABYBEAR_POSEIDON2_RC_32_INTERNAL,
-    BABYBEAR_POSEIDON2_RC_32_EXTERNAL_FINAL,
-);
-static PERMUTATION: PermutationAir = PermutationAir::new(CONSTANTS);
-const PERMUTATION_COLS: usize = num_cols::<
-    WIDTH,
-    BABYBEAR_S_BOX_DEGREE,
-    SBOX_REGISTERS,
-    BABYBEAR_POSEIDON2_HALF_FULL_ROUNDS,
-    BABYBEAR_POSEIDON2_PARTIAL_ROUNDS_32,
->();
 
 // The row, `NUM_COLS` wide. `ROWS` of them, all containing the same values:
 //
@@ -96,13 +46,8 @@ const PERMUTATION_COLS: usize = num_cols::<
 //
 // The input and the rounds are one run, `PERMUTATION_COLS` together, and
 // there are `PERMUTATIONS` runs.
-const PERMUTATIONS: usize = INPUT_ELEMENTS.div_ceil(RATE);
-const NUM_COLS: usize = N + PERMUTATIONS * PERMUTATION_COLS;
-
-const fn permutation_columns(index: usize) -> Range<usize> {
-    let start = N + index * PERMUTATION_COLS;
-    start..start + PERMUTATION_COLS
-}
+const PERMUTATIONS: usize = permutations(INPUT_ELEMENTS);
+pub(crate) const NUM_COLS: usize = N + PERMUTATIONS * PERMUTATION_COLS;
 
 /// The rules for (K). Its public value is `pk`.
 #[derive(Default)]
@@ -117,44 +62,6 @@ impl KeyAir {
         let row: Vec<Val> = bits.chain(hash).collect();
         RowMajorMatrix::new(row.repeat(ROWS), NUM_COLS)
     }
-}
-
-/// Hashes `input` and returns the columns of every Poseidon2 run, `PERMUTATION_COLS` each,
-/// one after the other.
-fn sponge_trace(input: impl Iterator<Item = Val>) -> Vec<Val> {
-    let mut columns = Vec::new();
-    let mut state = [Val::ZERO; WIDTH];
-    let mut input = input.peekable();
-    while input.peek().is_some() {
-        absorb(&mut state, &mut input);
-        let permutation = generate_trace_rows::<
-            Val,
-            LinearLayers,
-            WIDTH,
-            BABYBEAR_S_BOX_DEGREE,
-            SBOX_REGISTERS,
-            BABYBEAR_POSEIDON2_HALF_FULL_ROUNDS,
-            BABYBEAR_POSEIDON2_PARTIAL_ROUNDS_32,
-        >(vec![state], &CONSTANTS, 0);
-        state = output(permutation.values[..].borrow());
-        columns.extend(permutation.values);
-    }
-    columns
-}
-
-/// One step of the sponge.
-fn absorb<T>(state: &mut [T; WIDTH], input: &mut impl Iterator<Item = T>) {
-    for slot in state.iter_mut().take(RATE) {
-        if let Some(element) = input.next() {
-            *slot = element;
-        }
-    }
-}
-
-/// The state a permutation ends in.
-fn output<T: Copy>(columns: &PermutationCols<T>) -> [T; WIDTH] {
-    let [.., last] = &columns.ending_full_rounds;
-    last.post
 }
 
 impl BaseAir<Val> for KeyAir {
@@ -202,35 +109,10 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for KeyAir {
             builder.assert_bool(bit);
         }
 
+        // Poseidon2 over the domain and the key bits ends in pk.
         let elements: [AB::Expr; PACKED_KEY_ELEMENTS] =
             array::from_fn(|index| packed::<AB>(bits, index));
-        let mut input = KeyCommitment::input(elements);
-        let mut state: [AB::Expr; WIDTH] = array::from_fn(|_| AB::Expr::ZERO);
-        for index in 0..PERMUTATIONS {
-            let columns = permutation_columns(index);
-
-            // Plonky3's Poseidon2 rules: the permutation is computed correctly.
-            PERMUTATION.eval(&mut SubAirBuilder::<AB, PermutationAir, AB::Var>::new(
-                builder,
-                columns.clone(),
-            ));
-
-            // The input it was given is the right one.
-            absorb(&mut state, &mut input);
-            let permutation: &PermutationCols<AB::Var> = row[columns].borrow();
-            for (column, value) in permutation.inputs.iter().zip(&state) {
-                builder.assert_eq(*column, value.clone());
-            }
-
-            // Its output is where the next permutation starts, or pk after the last.
-            state = output(permutation).map(Into::into);
-        }
-        assert!(input.next().is_none(), "the sponge absorbed everything");
-
-        // The digest is pk.
-        for (value, expected) in state.into_iter().zip(pk) {
-            builder.assert_eq(value, expected);
-        }
+        eval_sponge(builder, N, KeyCommitment::input(elements), pk);
     }
 }
 
@@ -238,20 +120,11 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for KeyAir {
 mod tests {
     use super::*;
     use crate::plonky3::commitments::key::commit;
-    use crate::plonky3::commitments::sponge;
+    use crate::plonky3::sponge::{last_run, output};
     use p3_air::check_all_constraints;
     use p3_matrix::Matrix;
-    use p3_symmetric::CryptographicHasher;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
-
-    fn last_run(columns: &[Val]) -> &PermutationCols<Val> {
-        columns
-            .chunks(PERMUTATION_COLS)
-            .last()
-            .expect("a run")
-            .borrow()
-    }
 
     #[test]
     fn the_trace_ends_in_the_commitment() {
@@ -262,14 +135,6 @@ mod tests {
             output(last_run(&row[N..]))[..DIGEST_ELEMENTS],
             commit(&sk).0
         );
-    }
-
-    #[test]
-    fn the_sponge_carries_state_between_permutations() {
-        let input = vec![Val::ONE; 2 * RATE + 3];
-        let columns = sponge_trace(input.iter().copied());
-        let expected: [Val; DIGEST_ELEMENTS] = sponge().hash_slice(&input);
-        assert_eq!(output(last_run(&columns))[..DIGEST_ELEMENTS], expected);
     }
 
     #[test]
