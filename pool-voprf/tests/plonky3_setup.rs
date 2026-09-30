@@ -1,9 +1,9 @@
 #![cfg(feature = "plonky3")]
 
 use pool_prf::prf::SecretKey;
-use pool_voprf::key::KeyStatement;
 use pool_voprf::plonky3::{Plonky3, ProveError, VerifyError};
-use pool_voprf::proof::ProofSystem;
+use pool_voprf::statements::setup::SetupStatement;
+use pool_voprf::traits::ProofSystem;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use std::time::Instant;
@@ -19,7 +19,7 @@ fn verifier() -> Plonky3 {
 #[test]
 fn proves_and_verifies_the_committed_key() {
     let sk = SecretKey::random(&mut StdRng::seed_from_u64(2));
-    let statement = KeyStatement::for_key(&sk);
+    let statement = SetupStatement::for_key(&sk);
 
     let started = Instant::now();
     let proof = prover().prove(&statement, &sk).expect("proving");
@@ -41,7 +41,7 @@ fn refuses_to_prove_with_a_key_that_does_not_open_pk() {
     let sk = SecretKey::random(&mut StdRng::seed_from_u64(3));
     let other = SecretKey::random(&mut StdRng::seed_from_u64(4));
     assert!(matches!(
-        prover().prove(&KeyStatement::for_key(&other), &sk),
+        prover().prove(&SetupStatement::for_key(&other), &sk),
         Err(ProveError::WrongWitness)
     ));
 }
@@ -51,10 +51,10 @@ fn rejects_the_commitment_of_another_key() {
     let sk = SecretKey::random(&mut StdRng::seed_from_u64(5));
     let other = SecretKey::random(&mut StdRng::seed_from_u64(6));
     let proof = prover()
-        .prove(&KeyStatement::for_key(&sk), &sk)
+        .prove(&SetupStatement::for_key(&sk), &sk)
         .expect("proving");
     assert!(matches!(
-        verifier().verify(&KeyStatement::for_key(&other), &proof),
+        verifier().verify(&SetupStatement::for_key(&other), &proof),
         Err(VerifyError::Invalid(_))
     ));
 }
@@ -62,7 +62,7 @@ fn rejects_the_commitment_of_another_key() {
 #[test]
 fn proof_ser_deser() {
     let sk = SecretKey::random(&mut StdRng::seed_from_u64(7));
-    let statement = KeyStatement::for_key(&sk);
+    let statement = SetupStatement::for_key(&sk);
     let proof = prover().prove(&statement, &sk).expect("proving");
     let bytes = bincode::serialize(&proof).expect("serializing");
     let proof = bincode::deserialize(&bytes).expect("deserializing");
@@ -72,7 +72,7 @@ fn proof_ser_deser() {
 #[test]
 fn rejects_a_tampered_proof() {
     let sk = SecretKey::random(&mut StdRng::seed_from_u64(8));
-    let statement = KeyStatement::for_key(&sk);
+    let statement = SetupStatement::for_key(&sk);
     let proof = prover().prove(&statement, &sk).expect("proving");
     let mut bytes = bincode::serialize(&proof).expect("serializing");
     let at = bytes.len() / 3;

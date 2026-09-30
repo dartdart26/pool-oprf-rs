@@ -1,13 +1,11 @@
 #![cfg(feature = "plonky3")]
 
-use core::array;
-use pool_prf::params::{N, Q, Zq};
 use pool_prf::prf::SecretKey;
 use pool_voprf::plonky3::{Plonky3, ProveError, VerifyError};
-use pool_voprf::proof::ProofSystem;
-use pool_voprf::sum::{SumStatement, SumWitness};
+use pool_voprf::statements::preprocessing::{PreprocessingStatement, PreprocessingWitness};
+use pool_voprf::traits::ProofSystem;
+use rand::SeedableRng;
 use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
 use std::time::Instant;
 
 fn prover() -> Plonky3 {
@@ -18,28 +16,17 @@ fn verifier() -> Plonky3 {
     Plonky3::from_rng(&mut StdRng::seed_from_u64(2))
 }
 
-fn vector(rng: &mut StdRng) -> [Zq; N] {
-    array::from_fn(|_| rng.random_range(0..Q))
-}
-
-/// A random statement and its witness, from `seed`.
-fn random(seed: u64) -> (SumStatement, SumWitness) {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let witness = SumWitness {
-        sk: SecretKey::random(&mut rng),
-        r_sigma_sum: rng.random_range(0..Q),
-    };
-    (
-        SumStatement {
-            e: vector(&mut rng),
-        },
-        witness,
-    )
+/// A random witness, from `seed`.
+fn random(seed: u64) -> PreprocessingWitness {
+    PreprocessingWitness {
+        sk: SecretKey::random(&mut StdRng::seed_from_u64(seed)),
+    }
 }
 
 #[test]
-fn proves_and_verifies_the_sum() {
-    let (statement, witness) = random(2);
+fn proves_and_verifies_the_preprocessing() {
+    let witness = random(2);
+    let statement = PreprocessingStatement::for_witness(&witness);
 
     let started = Instant::now();
     let proof = prover().prove(&statement, &witness).expect("proving");
@@ -57,29 +44,32 @@ fn proves_and_verifies_the_sum() {
 }
 
 #[test]
-fn refuses_to_prove_a_request_outside_zq() {
-    let (mut statement, witness) = random(3);
-    statement.e[0] = Q;
+fn refuses_to_prove_with_the_witness_of_another_preprocessing() {
+    let witness = random(3);
+    let other = random(4);
     assert!(matches!(
-        prover().prove(&statement, &witness),
+        prover().prove(&PreprocessingStatement::for_witness(&other), &witness),
         Err(ProveError::WrongWitness)
     ));
 }
 
 #[test]
-fn rejects_another_request() {
-    let (statement, witness) = random(4);
-    let (other_statement, _) = random(5);
-    let proof = prover().prove(&statement, &witness).expect("proving");
+fn rejects_the_statement_of_another_preprocessing() {
+    let witness = random(5);
+    let other = random(6);
+    let proof = prover()
+        .prove(&PreprocessingStatement::for_witness(&witness), &witness)
+        .expect("proving");
     assert!(matches!(
-        verifier().verify(&other_statement, &proof),
+        verifier().verify(&PreprocessingStatement::for_witness(&other), &proof),
         Err(VerifyError::Invalid(_))
     ));
 }
 
 #[test]
 fn proof_ser_deser() {
-    let (statement, witness) = random(6);
+    let witness = random(7);
+    let statement = PreprocessingStatement::for_witness(&witness);
     let proof = prover().prove(&statement, &witness).expect("proving");
     let bytes = bincode::serialize(&proof).expect("serializing");
     let proof = bincode::deserialize(&bytes).expect("deserializing");
@@ -88,7 +78,8 @@ fn proof_ser_deser() {
 
 #[test]
 fn rejects_a_tampered_proof() {
-    let (statement, witness) = random(7);
+    let witness = random(8);
+    let statement = PreprocessingStatement::for_witness(&witness);
     let proof = prover().prove(&statement, &witness).expect("proving");
     let mut bytes = bincode::serialize(&proof).expect("serializing");
     let at = bytes.len() / 3;

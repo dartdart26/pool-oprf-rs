@@ -3,6 +3,8 @@
 //! Each kind of commitment includes its [`Domain`], such that no two kinds
 //! hash to the same output.
 
+pub mod key;
+
 use core::iter;
 use p3_baby_bear::{BabyBear, Poseidon2BabyBear, default_babybear_poseidon2_32};
 use p3_field::integers::QuotientMap;

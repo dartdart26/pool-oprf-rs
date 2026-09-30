@@ -23,13 +23,11 @@
 //! - the first `DIGEST_ELEMENTS` of Poseidon2's output are `pk`, which the
 //!   verifier supplies
 
-use crate::commitment::{DIGEST_ELEMENTS, RATE, WIDTH};
-use crate::key::{
-    BITS_PER_ELEMENT, INPUT_ELEMENTS, KeyCommitment, KeyStatement, PACKED_KEY_ELEMENTS, elements,
-    pack_key,
+use crate::plonky3::commitments::key::{
+    BITS_PER_ELEMENT, INPUT_ELEMENTS, KeyCommitment, PACKED_KEY_ELEMENTS, elements, pack_key,
 };
-use crate::plonky3::{Plonky3, Proof, ProveError, ROWS, Val, VerifyError};
-use crate::proof::{ProofSystem, Statement};
+use crate::plonky3::commitments::{DIGEST_ELEMENTS, RATE, WIDTH};
+use crate::plonky3::{ROWS, Val};
 use core::array;
 use core::borrow::Borrow;
 use core::ops::Range;
@@ -44,7 +42,7 @@ use p3_matrix::dense::RowMajorMatrix;
 use p3_poseidon2_air::{
     Poseidon2Air, Poseidon2Cols, RoundConstants, generate_trace_rows, num_cols,
 };
-use p3_uni_stark::{SubAirBuilder, prove, verify};
+use p3_uni_stark::SubAirBuilder;
 use pool_prf::params::N;
 use pool_prf::prf::SecretKey;
 
@@ -236,29 +234,11 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for KeyAir {
     }
 }
 
-impl ProofSystem<KeyStatement> for Plonky3 {
-    type Proof = Proof;
-    type ProveError = ProveError;
-    type VerifyError = VerifyError;
-
-    fn prove(&self, statement: &KeyStatement, sk: &SecretKey) -> Result<Proof, ProveError> {
-        if !statement.holds_for(sk) {
-            return Err(ProveError::WrongWitness);
-        }
-        let trace = KeyAir::trace(sk);
-        prove(&self.config, &KeyAir, trace, &statement.pk.0).map_err(ProveError::Prover)
-    }
-
-    fn verify(&self, statement: &KeyStatement, proof: &Proof) -> Result<(), VerifyError> {
-        Plonky3::verified(|| verify(&self.config, &KeyAir, proof, &statement.pk.0))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commitment::sponge;
-    use crate::key::commit;
+    use crate::plonky3::commitments::key::commit;
+    use crate::plonky3::commitments::sponge;
     use p3_air::check_all_constraints;
     use p3_matrix::Matrix;
     use p3_symmetric::CryptographicHasher;
@@ -297,36 +277,19 @@ mod tests {
         let mut bits = [0; N];
         bits[1] = 1;
         let sk = SecretKey::from_bits(bits).expect("a key");
-        let statement = KeyStatement::for_key(&sk);
+        let pk = commit(&sk);
 
         let mut trace = KeyAir::trace(&sk);
-        assert!(check_all_constraints(&KeyAir, &trace, &statement.pk.0, None).is_ok());
+        assert!(check_all_constraints(&KeyAir, &trace, &pk.0, None).is_ok());
         for row in trace.values.chunks_mut(NUM_COLS) {
             row[0] = Val::TWO;
             row[1] = Val::ZERO;
         }
-        let failures = check_all_constraints(&KeyAir, &trace, &statement.pk.0, None).failures;
+        let failures = check_all_constraints(&KeyAir, &trace, &pk.0, None).failures;
         assert!(!failures.is_empty());
         assert!(
             failures.iter().all(|failure| failure.constraint == 0),
             "{failures:?}"
         );
-    }
-
-    #[test]
-    fn every_element_of_pk_is_checked() {
-        let system = Plonky3::from_rng(&mut StdRng::seed_from_u64(1));
-        let sk = SecretKey::random(&mut StdRng::seed_from_u64(2));
-        let statement = KeyStatement::for_key(&sk);
-        let proof = system.prove(&statement, &sk).expect("proving");
-        system.verify(&statement, &proof).expect("verifying");
-        for i in 0..statement.pk.0.len() {
-            let mut pk = statement.pk;
-            pk.0[i] += Val::ONE;
-            assert!(
-                system.verify(&KeyStatement { pk }, &proof).is_err(),
-                "element {i} of pk is not checked"
-            );
-        }
     }
 }

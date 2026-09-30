@@ -3,15 +3,14 @@
 //! Zero knowledge is not Plonky3's default. It comes from the hiding
 //! commitment scheme.
 
-mod key_air;
-mod response_air;
-mod sum_air;
+pub mod commitments;
+pub mod constraints;
+mod statements;
 
-pub use key_air::KeyAir;
-pub use response_air::ResponseAir;
-pub use sum_air::SumAir;
+pub use constraints::key::KeyAir;
+pub use constraints::response::ResponseAir;
+pub use constraints::sum::SumAir;
 
-use crate::commitment;
 use p3_baby_bear::{Poseidon2BabyBear, default_babybear_poseidon2_16};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
@@ -26,22 +25,22 @@ use rand::rngs::StdRng;
 use rand::{CryptoRng, SeedableRng};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-type Val = commitment::Element;
+type Val = commitments::Element;
 
 // TODO: is this the right setting?
 type Challenge = BinomialExtensionField<Val, 4>;
 const CHALLENGE_DIMENSION: usize = <Challenge as BasedVectorSpace<Val>>::DIMENSION;
 
-type LeafHash = commitment::Sponge;
+type LeafHash = commitments::Sponge;
 
 /// A Merkle node has two children. Hashing an inner node feeds both child
 /// digests.
 const CHILDREN: usize = 2;
-const NODE_ELEMENTS: usize = CHILDREN * commitment::DIGEST_ELEMENTS;
+const NODE_ELEMENTS: usize = CHILDREN * commitments::DIGEST_ELEMENTS;
 type Compress = TruncatedPermutation<
     Poseidon2BabyBear<NODE_ELEMENTS>,
     CHILDREN,
-    { commitment::DIGEST_ELEMENTS },
+    { commitments::DIGEST_ELEMENTS },
     NODE_ELEMENTS,
 >;
 
@@ -57,13 +56,13 @@ type ValMmcs = MerkleTreeHidingMmcs<
     Compress,
     StdRng,
     CHILDREN,
-    { commitment::DIGEST_ELEMENTS },
+    { commitments::DIGEST_ELEMENTS },
     SALT_ELEMS,
 >;
 type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
 
 type Challenger =
-    DuplexChallenger<Val, commitment::Permutation, { commitment::WIDTH }, { commitment::RATE }>;
+    DuplexChallenger<Val, commitments::Permutation, { commitments::WIDTH }, { commitments::RATE }>;
 
 type Dft = Radix2DitParallel<Val>;
 
@@ -117,7 +116,7 @@ impl Plonky3 {
 
     pub fn from_rng(rng: &mut impl CryptoRng) -> Self {
         let val_mmcs = ValMmcs::new(
-            commitment::sponge(),
+            commitments::sponge(),
             Compress::new(default_babybear_poseidon2_16()),
             0,
             StdRng::from_rng(rng),
@@ -131,7 +130,7 @@ impl Plonky3 {
             NUM_RANDOM_CODEWORDS,
             StdRng::from_rng(rng),
         );
-        let challenger = Challenger::new(commitment::permutation());
+        let challenger = Challenger::new(commitments::permutation());
         Self {
             config: Config::new(pcs, challenger),
         }

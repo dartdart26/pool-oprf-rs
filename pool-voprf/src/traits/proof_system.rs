@@ -1,19 +1,6 @@
-//! The interface between the protocol and a proof system.
-//!
-//! A proof is about a [`Statement`]: public values both parties hold plus a
-//! witness only the prover holds.
-//!
-//! A [`ProofSystem`] is one circuit per statement.
-
+use crate::traits::Statement;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-
-pub trait Statement {
-    type Witness;
-
-    /// Whether `witness` satisfies the statement.
-    fn holds_for(&self, witness: &Self::Witness) -> bool;
-}
 
 /// A proof system for one kind of statement.
 pub trait ProofSystem<S: Statement> {
