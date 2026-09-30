@@ -15,7 +15,7 @@
 
 use crate::preprocessing::{ClientState, ServerState, Uid, tau_for};
 use pool_prf::hash::{ZqMatrix, hash_to_zq_matrix};
-use pool_prf::modular::{reduce_delta, reduce_q, sub_delta, sub_p, sub_q};
+use pool_prf::modular::{reduce_delta, reduce_q, sub_delta, sub_p};
 use pool_prf::params::{DELTA, DELTA_ZQ, H_ROWS, N, OUTPUT_ELEMENTS, Q, Zdelta, Zp, Zq, ZqAccum};
 use pool_prf::prf::{PrfOutput, SecretKey};
 use serde::{Deserialize, Serialize};
@@ -322,13 +322,12 @@ pub fn blind_eval(
         });
     }
 
-    let sk_bits = sk.as_bits();
     let mut rows = Vec::with_capacity(needed_slots);
     for eval in req.rows.chunks_exact(H_ROWS) {
         let first_slot = state
             .next_slots(H_ROWS)
             .expect("have_slots >= needed_slots checked above");
-        blind_eval_evaluation(state, sk_bits, eval, first_slot, &mut rows);
+        blind_eval_one(state, sk, eval, first_slot, &mut rows);
     }
 
     Ok(ResponseMessage {
@@ -339,37 +338,24 @@ pub fn blind_eval(
 
 /// The `H_ROWS` base runs of Figure 4's BlindEval for one evaluation, on slots
 /// `first_slot .. first_slot + H_ROWS`, appended to `out`.
-fn blind_eval_evaluation(
+fn blind_eval_one(
     state: &ServerState,
-    sk_bits: &[u8; N],
+    sk: &SecretKey,
     reqs: &[RowRequest],
     first_slot: u64,
     out: &mut Vec<RowResponse>,
 ) {
     assert_eq!(reqs.len(), H_ROWS, "an evaluation is H_ROWS rows");
 
-    let mut a_tilde_acc = [0 as ZqAccum; H_ROWS];
+    // r^ctr_{b_i,i}: the H_ROWS masks of coordinate i, one per row.
+    let r: Vec<[Zq; H_ROWS]> = (0..N).map(|i| state.r(i, first_slot)).collect();
 
-    for (i, &sk_i) in sk_bits.iter().enumerate() {
-        // r^ctr_{b_i,i} for each row
-        let r = state.r(i, first_slot);
-
-        let s = ZqAccum::from(sk_i);
-
-        for k in 0..H_ROWS {
-            let r_k = ZqAccum::from(r[k]);
-            let a_tilde_0 = r_k;
-            let a_tilde_1 = ZqAccum::from(sub_q(reqs[k].e[i], r[k]));
-            a_tilde_acc[k] += a_tilde_0 * (1 - s) + a_tilde_1 * s;
-        }
-    }
-
-    for k in 0..H_ROWS {
+    for (k, req) in reqs.iter().enumerate() {
         let ctr = first_slot + k as u64;
-        let a_sigma = reduce_q(a_tilde_acc[k]);
-
-        let y = pool_eval::respond(a_sigma, state.s_s(ctr), reqs[k].b_bar_prime);
-
+        let masks: [Zq; N] = std::array::from_fn(|i| r[i][k]);
+        let r_sigma_sum = pool_eval::r_sigma_sum(sk, &masks);
+        let a_sigma_sum = pool_eval::a_sigma_sum(sk, r_sigma_sum, &req.e);
+        let y = pool_eval::respond(a_sigma_sum, state.s_s(ctr), req.b_bar_prime);
         out.push(RowResponse { y, ctr });
     }
 }

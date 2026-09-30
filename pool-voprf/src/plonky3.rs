@@ -5,9 +5,11 @@
 
 mod key_air;
 mod response_air;
+mod sum_air;
 
 pub use key_air::KeyAir;
 pub use response_air::ResponseAir;
+pub use sum_air::SumAir;
 
 use crate::commitment;
 use p3_baby_bear::{Poseidon2BabyBear, default_babybear_poseidon2_16};
