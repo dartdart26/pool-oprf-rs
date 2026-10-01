@@ -3,6 +3,8 @@
 //! The rules of a constraint expect their own columns and their own public
 //! values, each starting at 0. Plonky3's [`SubAirBuilder`] shows them their
 //! columns only. [`SubPublicValues`] does the same for the public values.
+//! The periodic values are not cut, every constraint is shown all of them.
+//! Only (P) has any, so only (P) reads them.
 
 use crate::plonky3::Val;
 use core::ops::Range;
@@ -57,8 +59,6 @@ impl<AB: AirBuilder> AirBuilder for SubPublicValues<'_, AB> {
     }
 }
 
-/// Runs the rules of `air` over `columns` and `public_values` of the
-/// statement's row.
 pub fn eval_sub_air<AB, A>(
     builder: &mut AB,
     air: &A,

@@ -1,16 +1,20 @@
 #![cfg(feature = "plonky3")]
 
 use core::array;
+use pool_prf::modular::reduce_delta;
 use pool_prf::params::{DELTA, N, Q, Zdelta};
 use pool_prf::prf::SecretKey;
 use pool_voprf::plonky3::commitments::key::KeyCommitment;
 use pool_voprf::plonky3::commitments::mask_sum::MaskSumCommitment;
+use pool_voprf::plonky3::commitments::pad::PadCommitment;
 use pool_voprf::plonky3::{Plonky3, ProveError, VerifyError};
 use pool_voprf::statements::online::{OnlineStatement, OnlineWitness};
 use pool_voprf::traits::ProofSystem;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use std::time::Instant;
+
+type Online = OnlineStatement<KeyCommitment, MaskSumCommitment, PadCommitment>;
 
 fn prover() -> Plonky3 {
     Plonky3::from_rng(&mut StdRng::seed_from_u64(1))
@@ -21,18 +25,14 @@ fn verifier() -> Plonky3 {
 }
 
 /// A random witness and the honest statement for it, from `seed`.
-fn random(
-    seed: u64,
-) -> (
-    OnlineStatement<KeyCommitment, MaskSumCommitment>,
-    OnlineWitness,
-) {
+fn random(seed: u64) -> (Online, OnlineWitness) {
     let mut rng = StdRng::seed_from_u64(seed);
     let witness = OnlineWitness {
         sk: SecretKey::random(&mut rng),
         r_sigma_sum: rng.random_range(0..Q),
         m_randomness: rng.random(),
         pads: rng.random(),
+        d_randomness: rng.random(),
     };
     let e = array::from_fn(|_| rng.random_range(0..Q));
     let b_bar_prime = rng.random_range(0..DELTA as Zdelta);
@@ -102,6 +102,16 @@ fn refuses_to_prove_with_another_random_value_in_m() {
 }
 
 #[test]
+fn refuses_to_prove_with_another_random_value_in_d() {
+    let (statement, mut witness) = random(18);
+    witness.d_randomness[0] ^= 1;
+    assert!(matches!(
+        prover().prove(&statement, &witness),
+        Err(ProveError::WrongWitness)
+    ));
+}
+
+#[test]
 fn rejects_another_statement() {
     let (statement, witness) = random(7);
     let (other_statement, _) = random(8);
@@ -133,6 +143,25 @@ fn rejects_the_commitment_of_another_r_sigma_sum() {
         m: other_statement.m,
         ..statement
     };
+    assert!(verifier().verify(&wrong, &proof).is_err());
+}
+
+#[test]
+fn rejects_the_commitment_of_another_pad() {
+    let (statement, witness) = random(19);
+    let (other_statement, _) = random(20);
+    let proof = prover().prove(&statement, &witness).expect("proving");
+    let mut wrong = statement;
+    wrong.d[0] = other_statement.d[0];
+    assert!(verifier().verify(&wrong, &proof).is_err());
+}
+
+#[test]
+fn rejects_another_b_bar_prime() {
+    let (statement, witness) = random(21);
+    let proof = prover().prove(&statement, &witness).expect("proving");
+    let mut wrong = statement;
+    wrong.b_bar_prime = reduce_delta(wrong.b_bar_prime + 1);
     assert!(verifier().verify(&wrong, &proof).is_err());
 }
 

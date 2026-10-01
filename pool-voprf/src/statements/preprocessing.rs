@@ -3,7 +3,7 @@
 //!
 //! Its constraints are (K), (S), (T) and (M).
 
-use crate::constraints::key::Key;
+use crate::constraints::k_key::Key;
 use crate::traits::{Commitment, Constraint, Statement};
 use pool_prf::prf::SecretKey;
 use zeroize::{Zeroize, ZeroizeOnDrop};
