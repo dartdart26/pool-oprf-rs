@@ -23,7 +23,7 @@
 //!
 //! Let's call `S = Σ_i sk_i·e_i + r̃_Σ`, without the modulo operation.
 //!
-//! # 2. the sum mod `q`
+//! # 2. The sum mod `q`
 //!
 //! The result we want is `ã_Σ = S mod q`. To show that `ã_Σ` is the result,
 //! we use the definition of mod: `ã_Σ ≡ S mod q` when `S = ã_Σ + q·quotient`,

@@ -14,7 +14,7 @@
 //!
 //! `r̃_Σ` in `LOG_Q` bit columns forces it in `ℤ_q`.
 //!
-//! # 2. the hash
+//! # 2. The hash
 //!
 //! In order, Poseidon2 takes `WIDTH` slots:
 //!
@@ -29,8 +29,8 @@
 //! only harms the server.
 
 use crate::CommitmentRandomness;
-use crate::plonky3::commitments::mask_sum::{INPUT_ELEMENTS, MaskSumCommitment, elements, pair};
-use crate::plonky3::commitments::{DIGEST_ELEMENTS, RANDOMNESS_ELEMENTS, pack_randomness};
+use crate::plonky3::commitments::mask_sum::{INPUT_ELEMENTS, MaskSumCommitment, elements};
+use crate::plonky3::commitments::{DIGEST_ELEMENTS, RANDOMNESS_ELEMENTS, pack_randomness, pair};
 use crate::plonky3::sponge::{
     PERMUTATION, PERMUTATION_COLS, eval_sponge, permutations, sponge_trace,
 };
@@ -97,7 +97,7 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for MaskSumAir {
             builder.assert_bool(bit);
         }
 
-        // 2. the hash
+        // 2. The hash
         let r_sigma_sum = pack_bits_le::<AB::Expr, _, _>(bits.iter().copied());
         let randomness = array::from_fn(|k| row[RANDOMNESS + k].into());
         let input = MaskSumCommitment::input(pair(r_sigma_sum, randomness));

@@ -8,10 +8,11 @@ pub mod constraints;
 pub mod sponge;
 mod statements;
 
-pub use constraints::key::KeyAir;
-pub use constraints::mask_sum::MaskSumAir;
-pub use constraints::response::ResponseAir;
-pub use constraints::sum::SumAir;
+pub use constraints::a_sum::SumAir;
+pub use constraints::k_key::KeyAir;
+pub use constraints::m_mask_sum::MaskSumAir;
+pub use constraints::p_pads::PadsAir;
+pub use constraints::r_response::ResponseAir;
 
 use p3_baby_bear::{Poseidon2BabyBear, default_babybear_poseidon2_16};
 use p3_challenger::DuplexChallenger;
@@ -79,8 +80,9 @@ pub type Proof = p3_uni_stark::Proof<Config>;
 /// Random columns masking the trace; at least the challenge dimension.
 const NUM_RANDOM_CODEWORDS: usize = CHALLENGE_DIMENSION;
 
-/// How many times a circuit repeats its one row. Must be a power of 2.
-/// Needed for hiding.
+/// How many rows every circuit has. Must be a power of 2. Needed for
+/// hiding.
+/// TODO: Verify this is a good number.
 const ROWS: usize = 256;
 
 #[derive(Debug, thiserror::Error)]
