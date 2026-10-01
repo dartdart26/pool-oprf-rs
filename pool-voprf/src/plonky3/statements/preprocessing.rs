@@ -2,7 +2,7 @@
 //! and (M).
 
 use crate::plonky3::commitments::key::KeyCommitment;
-use crate::plonky3::constraints::key::KeyAir;
+use crate::plonky3::constraints::k_key::KeyAir;
 use crate::plonky3::{Plonky3, Proof, ProveError, VerifyError};
 use crate::statements::preprocessing::{PreprocessingStatement, PreprocessingWitness};
 use crate::traits::{ProofSystem, Statement};

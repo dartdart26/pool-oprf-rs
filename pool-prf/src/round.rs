@@ -1,22 +1,26 @@
 use crate::modular::reduce_p;
 use crate::params::{DELTA_ZQ, Q, Zp, Zq};
 
-/// `⌈v⌋_{q,p}` of the paper: round a ℤ_q element to ℤ_p by computing (p/q)*v
-/// and taking the nearest integer. On a tie, we round down.
+/// The nearest integer to `v / Δ`, from 0 to `p`. On a tie, we round down.
 #[inline]
-pub fn round_zq_to_zp(v: Zq) -> Zp {
+pub fn round(v: Zq) -> Zq {
     assert!(v < Q, "v must be reduced mod q");
     let quotient = v / DELTA_ZQ;
     let remainder = v % DELTA_ZQ;
     // Remainder runs from 0 to Δ - 1. If it is more than half, round up.
     // Else round down, with exactly half rounding down.
-    // The arithmetic stays in ℤ_q, so both branches reduce into [0, p) before
-    // the cast, which is then a plain narrowing.
     if remainder > DELTA_ZQ / 2 {
-        reduce_p(quotient + 1)
+        quotient + 1
     } else {
-        quotient as Zp
+        quotient
     }
+}
+
+/// `⌈v⌋_{q,p}` of the paper: round a ℤ_q element to ℤ_p by computing (p/q)*v
+/// and taking the nearest integer. On a tie, we round down.
+#[inline]
+pub fn round_zq_to_zp(v: Zq) -> Zp {
+    reduce_p(round(v))
 }
 
 #[cfg(test)]
