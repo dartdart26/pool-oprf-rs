@@ -5,6 +5,7 @@
 
 pub mod key;
 pub mod mask_sum;
+pub mod pad;
 
 use crate::CommitmentRandomness;
 use core::{array, iter};
@@ -34,6 +35,14 @@ pub fn pack_randomness(randomness: CommitmentRandomness) -> [Element; RANDOMNESS
     })
 }
 
+/// A committed value and its random value as one array.
+pub const PAIR_ELEMENTS: usize = 1 + RANDOMNESS_ELEMENTS;
+
+pub fn pair<T>(value: T, randomness: [T; RANDOMNESS_ELEMENTS]) -> [T; PAIR_ELEMENTS] {
+    let mut elements = iter::once(value).chain(randomness);
+    array::from_fn(|_| elements.next().expect("an element"))
+}
+
 pub const WIDTH: usize = 32;
 pub const CAPACITY: usize = 8;
 pub const DIGEST_ELEMENTS: usize = CAPACITY;
@@ -58,6 +67,8 @@ pub enum Domain {
     Key = 1,
     /// (M): `r̃_Σ` and a random value.
     MaskSum = 2,
+    /// (P): a pad and a random value.
+    Pad = 3,
 }
 
 /// A commitment of one kind, to `LEN` elements. Both are in the type, such
