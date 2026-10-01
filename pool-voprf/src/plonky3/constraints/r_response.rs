@@ -47,7 +47,7 @@
 //! `k`. The right side computes it from the `ã_Σ` column, with `q` added
 //! back when `ã_Σ - j` went below zero.
 //!
-//! # 2. rounding `t_j`, i.e. `⌈t_j⌋`
+//! # 2. Rounding `t_j`, i.e. `⌈t_j⌋`
 //!
 //! `⌈t_j⌋` is the nearest integer to `t_j / Δ`, ties down. Since `Δ` is a
 //! power of two, the division is a split of the bits of `t_j`: the quotient
@@ -92,13 +92,19 @@ use p3_field::PrimeCharacteristicRing;
 use p3_field::integers::QuotientMap;
 use p3_matrix::dense::RowMajorMatrix;
 use pool_prf::modular::sub_q;
-use pool_prf::params::{DELTA, DELTA_ZQ, LOG_DELTA, LOG_Q, P, Q, Zdelta, Zp, Zq};
+use pool_prf::params::{DELTA, LOG_DELTA, LOG_Q, P, Q, Zdelta, Zp, Zq};
+use pool_prf::round::round;
 
 const T_BITS: usize = LOG_Q as usize;
 /// The bits of `t_j`, `wrapped`, `pad_j`, `carry`.
 const ENTRY_COLS: usize = T_BITS + 3;
 /// `ã_Σ` and then the `Δ` entries.
 pub(crate) const NUM_COLS: usize = 1 + DELTA * ENTRY_COLS;
+
+/// Where `pad_j` is.
+pub(crate) const fn pad_column(j: usize) -> usize {
+    1 + j * ENTRY_COLS + T_BITS + 1
+}
 
 /// `up` of step 2, from the bits `m` of the remainder. Lowest bit first in `m`.
 fn up<AB: AirBuilder>(m: &[AB::Var]) -> AB::Expr {
@@ -119,8 +125,7 @@ impl ResponseAir {
         for j in 0..DELTA {
             let t = sub_q(a_sigma_sum, j as Zq);
             let wrapped = a_sigma_sum < j as Zq;
-            let up = (t % DELTA_ZQ) > DELTA_ZQ / 2;
-            let rounded = t / DELTA_ZQ + Zq::from(up);
+            let rounded = round(t);
             let pad = pool_eval::pad(pads, j, b_bar_prime);
             let carry = (rounded + Zq::from(pad)) >= P;
             row.extend((0..T_BITS).map(|k| Val::from_int((t >> k) & 1)));

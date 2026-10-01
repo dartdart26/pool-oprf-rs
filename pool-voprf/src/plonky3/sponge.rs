@@ -124,7 +124,7 @@ pub fn eval_sponge<AB: AirBuilder<F = Val>>(
     builder: &mut AB,
     first: usize,
     input: impl Iterator<Item = AB::Expr>,
-    digest: [AB::PublicVar; DIGEST_ELEMENTS],
+    digest: [impl Into<AB::Expr>; DIGEST_ELEMENTS],
 ) {
     let main = builder.main();
     let row = main.current_slice();

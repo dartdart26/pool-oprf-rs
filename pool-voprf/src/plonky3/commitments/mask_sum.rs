@@ -2,25 +2,16 @@
 
 use crate::CommitmentRandomness;
 use crate::plonky3::commitments::{
-    Commitment, Domain, Element, RANDOMNESS_ELEMENTS, pack_randomness,
+    Commitment, Domain, Element, PAIR_ELEMENTS, pack_randomness, pair,
 };
-use core::{array, iter};
 use p3_field::integers::QuotientMap;
 use pool_prf::params::Zq;
-
-pub const PAIR_ELEMENTS: usize = 1 + RANDOMNESS_ELEMENTS;
 
 /// `m` - a commitment to the pair.
 pub type MaskSumCommitment = Commitment<{ Domain::MaskSum as u32 }, PAIR_ELEMENTS>;
 
 /// Domain + the pair.
 pub const INPUT_ELEMENTS: usize = 1 + PAIR_ELEMENTS;
-
-/// `r̃_Σ` then the random value, as one array.
-pub fn pair<T>(r_sigma_sum: T, randomness: [T; RANDOMNESS_ELEMENTS]) -> [T; PAIR_ELEMENTS] {
-    let mut elements = iter::once(r_sigma_sum).chain(randomness);
-    array::from_fn(|_| elements.next().expect("an element"))
-}
 
 /// The pair as elements.
 pub fn elements(r_sigma_sum: Zq, randomness: CommitmentRandomness) -> [Element; PAIR_ELEMENTS] {
