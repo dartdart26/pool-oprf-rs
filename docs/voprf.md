@@ -22,7 +22,7 @@ Simplifications: `τ = 1`, so one preprocessing run pays for one evaluation,
 and the paper's session id `uid` and counter `ctr` are dropped, since they
 only match a message to its preprocessing run. Here we focus on one output
 element of `ℤ_p`, i.e. 8 bits. For 128 bits it means it needs to run 16
-times.
+times (`H_ROWS = 16` in the code).
 
 ```
 F_sk(t, x) = ⌈aᵀsk⌋_{q, p}      a = RO(t, x) in ℤ_q^n,   sk in {0,1}^n,   output in ℤ_p
@@ -102,6 +102,14 @@ The inputs to the equation, and where the server gets each:
 The client reads one entry of the response, `y_{j*}`, at an index `j*` that
 only it knows. The server does not know `j*`, so it has to prove the
 equation for `y_j` at every `j`, not just at `j*`.
+
+The 1-out-of-Δ OT of preprocessing step 3 picks a random index `b′`. It
+gives the client `b′` and one pad, `r′_{b′}`. It gives the server all Δ
+pads, `r′_0 .. r′_{Δ-1}`, and the server cannot see `b′`.
+
+The client sends `b̄′ = (j* - b′) mod Δ`. The server adds one pad to each
+entry of the response: `r′_{(j - b̄′) mod Δ}` to `y_j`. For `y_{j*}` that
+pad is `r′_{(j* - b̄′) mod Δ} = r′_{b′}` (the client's).
 
 ### Splitting the sum
 
@@ -192,24 +200,28 @@ then means `b̄_i ⊕ sk_i = b_i`.
 where `sk_i = 1`, as [Splitting the sum](#splitting-the-sum) derives it.
 
 ```
-(M)  r̃_Σ opens m,   r̃_Σ in ℤ_q
+(M)  r̃_Σ opens m
 ```
 
 `m` is the server's commitment to `r̃_Σ`, sent at the end of preprocessing.
 (M) is in the preprocessing proof and in the online proof, so the `r̃_Σ`
 that (T) sums from the masks is the `r̃_Σ` the online proof uses in (A).
+(T) computes `r̃_Σ` mod `q`, so (M) has no range to check.
 
 ```
 (P)  r′_0 .. r′_{Δ-1} open d_0 .. d_{Δ-1}
 ```
 
-The client holds one pad, `r′_{b′}`, and must not tell the server which, so
-after preprocessing step 3 the server sends commitments `d_0 .. d_{Δ-1}` to
-all its Δ pads. It does not know which one the client will check, so it is
-forced to commit to the right value for all of them. The client checks
-`d_{b′}` against its own pad, so the pad at index `b′` is the client's. The
-proof opens `d_{b′}` with the `r′_{b′}` that (R) uses, so the client is
-convinced that the pad the server used at index `b′` is its own.
+The server does not know which pad the client holds, so it commits to all Δ
+and the proof opens all Δ:
+
+1. After preprocessing step 3 the server sends commitments `d_0 .. d_{Δ-1}`
+   to its Δ pads.
+2. The client checks `d_{b′}` against its own pad `r′_{b′}`.
+3. The proof shows that the pad added to `y_j` opens `d_{(j - b̄′) mod Δ}`.
+
+For `y_{j*}` that is `d_{b′}`, since `(j* - b̄′) mod Δ = b′`. So the pad on
+`y_{j*}` is the client's own.
 
 ```
 (A)  ã_Σ = Σ_i sk_i·e_i + r̃_Σ      mod q
@@ -246,11 +258,13 @@ Therefore, the proofs must be zero-knowledge.
 ## 6. To the full protocol
 
 Section 1 simplified to one output element and `τ = 1`. In full, one
-evaluation is 16 runs of the protocol, for a 128-bit output, and one
+evaluation is `H_ROWS = 16` runs of the protocol, for a 128-bit output, and one
 preprocessing serves `τ` evaluations, each with its own masks from the same
-OT, so `16·τ` runs. The online proof is per run: 16 times per evaluation,
-`16·τ` times per preprocessing. The preprocessing proof does not depend on
-the evaluation and is made once per preprocessing.
+OT, so `16·τ` runs. The online proof is per evaluation: it covers its 16
+runs at once, with (K) once and (P), (A) and (R) per run, so `τ` proofs per
+preprocessing. `m` is per evaluation too: one commitment to the `r̃_Σ` of
+its 16 runs, so (M) is once per proof as well. The preprocessing proof does
+not depend on the evaluation and is made once per preprocessing.
 
 ## 7. Which proof system
 

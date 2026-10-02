@@ -16,9 +16,8 @@
 //! Entry `j` is on row `j`, and again every `Δ` rows.
 //!
 //! Next to them are `Δ` periodic columns, `s_0 .. s_{Δ-1}`. `s_j` is the
-//! selector of entry `j`: 1 on its rows, 0 on the others. They are not
-//! columns of the table: the prover does not commit to them, both sides
-//! compute them.
+//! selector of entry `j`: 1 on its rows, 0 on the others, see
+//! [`selectors`].
 //!
 //! | row      |     | `pad_j`     | random value   | Poseidon2      |     | `s_0` | `s_1` | … | `s_{Δ-1}` |
 //! |----------|-----|-------------|----------------|----------------|-----|-------|-------|---|-----------|
@@ -58,17 +57,21 @@
 //! No rule checks `pad_j` or the random value. The random value hides
 //! `pad_j`, so a bad one only harms the server. `pad_j` is whatever `d`
 //! commits to, and the client checks `d_{b′}` against its own pad.
+//!
+//! [`PadsAir::rules`] takes the `hash` from its caller. Alone, that is the
+//! sum above over the public values. In the online statement, it is the
+//! `d` of the row's entry of the row's run.
 
 use crate::CommitmentRandomness;
 use crate::plonky3::commitments::pad::{INPUT_ELEMENTS, PadCommitment, elements};
 use crate::plonky3::commitments::{DIGEST_ELEMENTS, RANDOMNESS_ELEMENTS, pack_randomness, pair};
+use crate::plonky3::selectors::{select, selectors};
 use crate::plonky3::sponge::{
     PERMUTATION, PERMUTATION_COLS, eval_sponge, permutations, sponge_trace,
 };
 use crate::plonky3::{ROWS, Val};
 use core::array;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
-use p3_field::PrimeCharacteristicRing;
 use p3_field::integers::QuotientMap;
 use p3_matrix::dense::RowMajorMatrix;
 use pool_prf::modular::sub_delta;
@@ -94,34 +97,15 @@ fn pad_index(j: usize, b_bar_prime: Zdelta) -> usize {
     usize::from(sub_delta(j as Zdelta, b_bar_prime))
 }
 
-/// `s_0 .. s_{Δ-1}`: `s_j` is 1 on the rows of entry `j`, 0 on the others.
-fn selectors() -> [Vec<Val>; DELTA] {
-    array::from_fn(|j| (0..DELTA).map(|i| Val::from_bool(i == j)).collect())
-}
-
-/// `Σ_j s_j·values[j]`: selects one of `values`, the one where `s_j` is 1.
-/// `values` are either the `d`s or pads of the table.
-pub(crate) fn select<AB: AirBuilder>(
-    s: &[AB::PeriodicVar; DELTA],
-    values: [AB::Expr; DELTA],
-) -> AB::Expr {
-    s.iter()
-        .zip(values)
-        .map(|(&s_j, value)| {
-            let s_j: AB::Expr = s_j.into();
-            s_j * value
-        })
-        .sum()
-}
-
 pub struct PadsAir;
 
 impl PadsAir {
-    pub fn trace(
+    /// The `Δ` entries, one row each: entry `j` on row `j`.
+    pub fn entries(
         pads: &[Zp; DELTA],
         randomness: &[CommitmentRandomness; DELTA],
         b_bar_prime: Zdelta,
-    ) -> RowMajorMatrix<Val> {
+    ) -> Vec<Val> {
         let mut rows = Vec::new();
         for j in 0..DELTA {
             let pad_index = pad_index(j, b_bar_prime);
@@ -132,7 +116,28 @@ impl PadsAir {
             let input = PadCommitment::input(elements(pad, randomness));
             rows.extend(sponge_trace(input));
         }
-        RowMajorMatrix::new(rows.repeat(ROWS / DELTA), NUM_COLS)
+        rows
+    }
+
+    /// The table - the entries, repeated to `ROWS` rows.
+    pub fn trace(
+        pads: &[Zp; DELTA],
+        randomness: &[CommitmentRandomness; DELTA],
+        b_bar_prime: Zdelta,
+    ) -> RowMajorMatrix<Val> {
+        let entries = Self::entries(pads, randomness, b_bar_prime);
+        RowMajorMatrix::new(entries.repeat(ROWS / DELTA), NUM_COLS)
+    }
+
+    /// The rules for (P) on the row: its pad and random value hash to
+    /// `hash`.
+    pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, hash: [AB::Expr; DIGEST_ELEMENTS]) {
+        let main = builder.main();
+        let row = main.current_slice();
+        let pad = row[PAD].into();
+        let randomness = array::from_fn(|k| row[RANDOMNESS + k].into());
+        let input = PadCommitment::input(pair(pad, randomness));
+        eval_sponge(builder, SPONGE, input, hash);
     }
 }
 
@@ -159,7 +164,7 @@ impl BaseAir<Val> for PadsAir {
     }
 
     fn periodic_columns(&self) -> Cow<'_, [Vec<Val>]> {
-        Cow::Owned(selectors().into())
+        Cow::Owned(selectors::<DELTA>(1).into())
     }
 }
 
@@ -176,12 +181,6 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for PadsAir {
                 .expect("d_j")
         });
         let s: [AB::PeriodicVar; DELTA] = builder.periodic_values().try_into().expect("s_j");
-        let main = builder.main();
-        let row = main.current_slice();
-
-        let pad = row[PAD].into();
-        let randomness = array::from_fn(|k| row[RANDOMNESS + k].into());
-        let input = PadCommitment::input(pair(pad, randomness));
 
         // The `hash` of this row's entry:
         //
@@ -191,9 +190,9 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for PadsAir {
         // element.
         let hash: [AB::Expr; DIGEST_ELEMENTS] = array::from_fn(|k| {
             let element_k = d.map(|d_j| d_j[k].into());
-            select::<AB>(&s, element_k)
+            select::<AB, DELTA>(&s, element_k)
         });
-        eval_sponge(builder, SPONGE, input, hash);
+        Self::rules(builder, hash);
     }
 }
 

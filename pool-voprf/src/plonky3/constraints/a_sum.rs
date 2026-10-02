@@ -32,6 +32,9 @@
 //!
 //! Let's call the field's prime `Pf`. `S` and `q·quotient + ã_Σ` must stay
 //! below `Pf`, because the rule compares them `mod Pf`.
+//!
+//! [`SumAir::rules`] takes `e` from its caller. Alone, that is the public
+//! values. In the online statement, it is the `e` of the row's run.
 
 use crate::plonky3::{ROWS, Val};
 use p3_air::utils::pack_bits_le;
@@ -65,7 +68,8 @@ fn bits(value: ZqAccum, count: usize) -> impl Iterator<Item = Val> {
 pub struct SumAir;
 
 impl SumAir {
-    pub fn trace(sk: &SecretKey, r_sigma_sum: Zq, e: &[Zq; N]) -> RowMajorMatrix<Val> {
+    /// The row for `sk`, `r̃_Σ` and `e`.
+    pub fn row(sk: &SecretKey, r_sigma_sum: Zq, e: &[Zq; N]) -> Vec<Val> {
         let sk = sk.as_bits();
         let first_sum: ZqAccum = sk
             .iter()
@@ -78,7 +82,35 @@ impl SumAir {
         row.push(Val::from_int(r_sigma_sum));
         row.extend(bits(reduce_q(sum).into(), A_SIGMA_BITS));
         row.extend(bits(quotient_q(sum), QUOTIENT_BITS));
-        RowMajorMatrix::new(row.repeat(ROWS), NUM_COLS)
+        row
+    }
+
+    /// The table - `ROWS` copies of the row.
+    pub fn trace(sk: &SecretKey, r_sigma_sum: Zq, e: &[Zq; N]) -> RowMajorMatrix<Val> {
+        RowMajorMatrix::new(Self::row(sk, r_sigma_sum, e).repeat(ROWS), NUM_COLS)
+    }
+
+    /// The rules for (A) on the row, for `e`.
+    pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, e: [AB::Expr; N]) {
+        let main = builder.main();
+        let row = main.current_slice();
+        let sk = &row[SK..R_SIGMA];
+        let r_sigma_sum: AB::Expr = row[R_SIGMA].into();
+        let a_sigma_bits = &row[A_SIGMA..QUOTIENT];
+        let quotient_bits = &row[QUOTIENT..NUM_COLS];
+        for &bit in sk.iter().chain(a_sigma_bits).chain(quotient_bits) {
+            builder.assert_bool(bit);
+        }
+
+        // sk_i·e_i
+        let terms = sk.iter().zip(e).map(|(&sk_i, e_i)| sk_i * e_i);
+        // S = Σ_i sk_i·e_i + r̃_Σ
+        let s = terms.sum::<AB::Expr>() + r_sigma_sum;
+
+        // S = ã_Σ + q·quotient
+        let a_sigma_sum = pack_bits_le::<AB::Expr, _, _>(a_sigma_bits.iter().copied());
+        let quotient = pack_bits_le::<AB::Expr, _, _>(quotient_bits.iter().copied());
+        builder.assert_eq(s, a_sigma_sum + quotient * Val::from_int(Q));
     }
 }
 
@@ -99,28 +131,7 @@ impl BaseAir<Val> for SumAir {
 impl<AB: AirBuilder<F = Val>> Air<AB> for SumAir {
     fn eval(&self, builder: &mut AB) {
         let e: [AB::PublicVar; N] = builder.public_values().try_into().expect("e");
-        let main = builder.main();
-        let row = main.current_slice();
-        let sk = &row[SK..R_SIGMA];
-        let r_sigma_sum: AB::Expr = row[R_SIGMA].into();
-        let a_sigma_bits = &row[A_SIGMA..QUOTIENT];
-        let quotient_bits = &row[QUOTIENT..NUM_COLS];
-        for &bit in sk.iter().chain(a_sigma_bits).chain(quotient_bits) {
-            builder.assert_bool(bit);
-        }
-
-        // sk_i·e_i
-        let terms = sk.iter().zip(e).map(|(&sk_i, e_i)| {
-            let e_i: AB::Expr = e_i.into();
-            sk_i * e_i
-        });
-        // S = Σ_i sk_i·e_i + r̃_Σ
-        let s = terms.sum::<AB::Expr>() + r_sigma_sum;
-
-        // S = ã_Σ + q·quotient
-        let a_sigma_sum = pack_bits_le::<AB::Expr, _, _>(a_sigma_bits.iter().copied());
-        let quotient = pack_bits_le::<AB::Expr, _, _>(quotient_bits.iter().copied());
-        builder.assert_eq(s, a_sigma_sum + quotient * Val::from_int(Q));
+        Self::rules(builder, e.map(Into::into));
     }
 }
 

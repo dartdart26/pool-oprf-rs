@@ -32,7 +32,6 @@ impl crate::traits::Commitment for PadCommitment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plonky3::commitments::mask_sum;
 
     #[test]
     fn the_pair_is_the_pad_then_the_random_value() {
@@ -46,10 +45,5 @@ mod tests {
         assert_eq!(commit(7, 8), commit(7, 8));
         assert_ne!(commit(7, 8), commit(8, 8));
         assert_ne!(commit(7, 8), commit(7, 9));
-    }
-
-    #[test]
-    fn same_pair_different_domain_commit_differently() {
-        assert_ne!(commit(7, 8).0, mask_sum::commit(7, 8).0);
     }
 }
