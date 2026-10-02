@@ -16,8 +16,11 @@
 //! - every key bit is 0 or 1
 //! - Poseidon2's input is what `commit` gives it: the domain, the key bits
 //!   read as numbers, and zeros in the other slots
-//! - the first `DIGEST_ELEMENTS` of Poseidon2's output are `pk`, which the
-//!   verifier supplies
+//! - the first `DIGEST_ELEMENTS` of Poseidon2's output are `pk`
+//!
+//! [`KeyAir::rules`] takes `pk` from its caller. Alone, that is the public
+//! values. In the online statement, it is the `pk` the statement picks for
+//! the row.
 
 use crate::plonky3::commitments::key::{
     INPUT_ELEMENTS, KeyCommitment, PACKED_KEY_ELEMENTS, elements, pack_key,
@@ -54,13 +57,34 @@ pub(crate) const NUM_COLS: usize = N + PERMUTATIONS * PERMUTATION_COLS;
 pub struct KeyAir;
 
 impl KeyAir {
-    /// The table for `sk` - `ROWS` copies of the row.
-    pub fn trace(sk: &SecretKey) -> RowMajorMatrix<Val> {
+    /// The row for `sk`.
+    pub fn row(sk: &SecretKey) -> Vec<Val> {
         let packed = pack_key(sk);
         let bits = sk.as_bits().iter().map(|&bit| Val::from_bool(bit == 1));
         let hash = sponge_trace(KeyCommitment::input(elements(&packed)));
-        let row: Vec<Val> = bits.chain(hash).collect();
-        RowMajorMatrix::new(row.repeat(ROWS), NUM_COLS)
+        bits.chain(hash).collect()
+    }
+
+    /// The table for `sk` - `ROWS` copies of the row.
+    pub fn trace(sk: &SecretKey) -> RowMajorMatrix<Val> {
+        RowMajorMatrix::new(Self::row(sk).repeat(ROWS), NUM_COLS)
+    }
+
+    /// The rules for (K) on the row, for `pk`.
+    pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, pk: [AB::Expr; DIGEST_ELEMENTS]) {
+        let main = builder.main();
+        let row = main.current_slice();
+        let bits = &row[..N];
+
+        // Every key bit is 0 or 1.
+        for &bit in bits {
+            builder.assert_bool(bit);
+        }
+
+        // Poseidon2 over the domain and the key bits ends in pk.
+        let elements: [AB::Expr; PACKED_KEY_ELEMENTS] =
+            array::from_fn(|index| packed::<AB>(bits, index));
+        eval_sponge(builder, N, KeyCommitment::input(elements), pk);
     }
 }
 
@@ -100,19 +124,7 @@ fn packed<AB: AirBuilder>(bits: &[AB::Var], index: usize) -> AB::Expr {
 impl<AB: AirBuilder<F = Val>> Air<AB> for KeyAir {
     fn eval(&self, builder: &mut AB) {
         let pk: [AB::PublicVar; DIGEST_ELEMENTS] = builder.public_values().try_into().expect("pk");
-        let main = builder.main();
-        let row = main.current_slice();
-        let bits = &row[..N];
-
-        // Every key bit is 0 or 1.
-        for &bit in bits {
-            builder.assert_bool(bit);
-        }
-
-        // Poseidon2 over the domain and the key bits ends in pk.
-        let elements: [AB::Expr; PACKED_KEY_ELEMENTS] =
-            array::from_fn(|index| packed::<AB>(bits, index));
-        eval_sponge(builder, N, KeyCommitment::input(elements), pk);
+        Self::rules(builder, pk.map(Into::into));
     }
 }
 

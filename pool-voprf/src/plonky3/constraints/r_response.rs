@@ -84,6 +84,9 @@
 //! ```text
 //! y_j = ⌈t_j⌋ + pad_j - p·carry
 //! ```
+//!
+//! [`ResponseAir::rules`] takes `y` from its caller. Alone, that is the
+//! public values. In the online statement, it is the `y` of the row's run.
 
 use crate::plonky3::{ROWS, Val};
 use p3_air::utils::pack_bits_le;
@@ -120,7 +123,8 @@ fn up<AB: AirBuilder>(m: &[AB::Var]) -> AB::Expr {
 pub struct ResponseAir;
 
 impl ResponseAir {
-    pub fn trace(a_sigma_sum: Zq, pads: &[Zp; DELTA], b_bar_prime: Zdelta) -> RowMajorMatrix<Val> {
+    /// The row for `ã_Σ`, the pads and `b̄′`.
+    pub fn row(a_sigma_sum: Zq, pads: &[Zp; DELTA], b_bar_prime: Zdelta) -> Vec<Val> {
         let mut row = vec![Val::from_int(a_sigma_sum)];
         for j in 0..DELTA {
             let t = sub_q(a_sigma_sum, j as Zq);
@@ -133,28 +137,19 @@ impl ResponseAir {
             row.push(Val::from_int(pad));
             row.push(Val::from_bool(carry));
         }
-        RowMajorMatrix::new(row.repeat(ROWS), NUM_COLS)
-    }
-}
-
-impl BaseAir<Val> for ResponseAir {
-    fn width(&self) -> usize {
-        NUM_COLS
+        row
     }
 
-    /// A row holds all of (R), so no rule reads the next row.
-    fn main_next_row_columns(&self) -> Vec<usize> {
-        vec![]
+    /// The table - `ROWS` copies of the row.
+    pub fn trace(a_sigma_sum: Zq, pads: &[Zp; DELTA], b_bar_prime: Zdelta) -> RowMajorMatrix<Val> {
+        RowMajorMatrix::new(
+            Self::row(a_sigma_sum, pads, b_bar_prime).repeat(ROWS),
+            NUM_COLS,
+        )
     }
 
-    fn num_public_values(&self) -> usize {
-        DELTA
-    }
-}
-
-impl<AB: AirBuilder<F = Val>> Air<AB> for ResponseAir {
-    fn eval(&self, builder: &mut AB) {
-        let y: [AB::PublicVar; DELTA] = builder.public_values().try_into().expect("y");
+    /// The rules for (R) on the row, for `y`.
+    pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, y: [AB::Expr; DELTA]) {
         let main = builder.main();
         let row = main.current_slice();
         let a_sigma_sum = row[0];
@@ -182,6 +177,28 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for ResponseAir {
             // 3. y_j = ⌈t_j⌋ + pad_j - carry·p
             builder.assert_eq(rounded + pad - carry * Val::from_int(P), y_j);
         }
+    }
+}
+
+impl BaseAir<Val> for ResponseAir {
+    fn width(&self) -> usize {
+        NUM_COLS
+    }
+
+    /// A row holds all of (R), so no rule reads the next row.
+    fn main_next_row_columns(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    fn num_public_values(&self) -> usize {
+        DELTA
+    }
+}
+
+impl<AB: AirBuilder<F = Val>> Air<AB> for ResponseAir {
+    fn eval(&self, builder: &mut AB) {
+        let y: [AB::PublicVar; DELTA] = builder.public_values().try_into().expect("y");
+        Self::rules(builder, y.map(Into::into));
     }
 }
 

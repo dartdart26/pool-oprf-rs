@@ -2,19 +2,23 @@
 
 use core::array;
 use pool_prf::modular::reduce_delta;
-use pool_prf::params::{DELTA, N, Q, Zdelta};
+use pool_prf::params::{DELTA, N, Q, RUNS_PER_EVALUATION, Zdelta};
 use pool_prf::prf::SecretKey;
 use pool_voprf::plonky3::commitments::key::KeyCommitment;
 use pool_voprf::plonky3::commitments::mask_sum::MaskSumCommitment;
 use pool_voprf::plonky3::commitments::pad::PadCommitment;
 use pool_voprf::plonky3::{Plonky3, ProveError, VerifyError};
-use pool_voprf::statements::online::{OnlineStatement, OnlineWitness};
+use pool_voprf::statements::online::{OnlineStatement, OnlineWitness, RunWitness};
 use pool_voprf::traits::ProofSystem;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use std::time::Instant;
 
 type Online = OnlineStatement<KeyCommitment, MaskSumCommitment, PadCommitment>;
+
+/// The run the tests change: the last, so that a proof that covers the
+/// first run only is caught.
+const LAST: usize = RUNS_PER_EVALUATION - 1;
 
 fn prover() -> Plonky3 {
     Plonky3::from_rng(&mut StdRng::seed_from_u64(1))
@@ -29,15 +33,17 @@ fn random(seed: u64) -> (Online, OnlineWitness) {
     let mut rng = StdRng::seed_from_u64(seed);
     let witness = OnlineWitness {
         sk: SecretKey::random(&mut rng),
-        r_sigma_sum: rng.random_range(0..Q),
         m_randomness: rng.random(),
-        pads: rng.random(),
-        d_randomness: rng.random(),
+        runs: array::from_fn(|_| RunWitness {
+            r_sigma_sum: rng.random_range(0..Q),
+            pads: rng.random(),
+            d_randomness: rng.random(),
+        }),
     };
-    let e = array::from_fn(|_| rng.random_range(0..Q));
-    let b_bar_prime = rng.random_range(0..DELTA as Zdelta);
+    let e = array::from_fn(|_| array::from_fn(|_| rng.random_range(0..Q)));
+    let b_bar_prime = array::from_fn(|_| rng.random_range(0..DELTA as Zdelta));
     (
-        OnlineStatement::for_witness(&witness, e, b_bar_prime),
+        OnlineStatement::for_witness(&witness, &e, &b_bar_prime),
         witness,
     )
 }
@@ -74,7 +80,7 @@ fn refuses_to_prove_with_a_witness_of_another_response() {
 #[test]
 fn refuses_to_prove_a_request_outside_zq() {
     let (mut statement, witness) = random(5);
-    statement.e[0] = Q;
+    statement.runs[LAST].e[0] = Q;
     assert!(matches!(
         prover().prove(&statement, &witness),
         Err(ProveError::WrongWitness)
@@ -84,7 +90,7 @@ fn refuses_to_prove_a_request_outside_zq() {
 #[test]
 fn refuses_to_prove_with_an_r_sigma_sum_outside_zq() {
     let (statement, mut witness) = random(6);
-    witness.r_sigma_sum = Q;
+    witness.runs[LAST].r_sigma_sum = Q;
     assert!(matches!(
         prover().prove(&statement, &witness),
         Err(ProveError::WrongWitness)
@@ -104,7 +110,7 @@ fn refuses_to_prove_with_another_random_value_in_m() {
 #[test]
 fn refuses_to_prove_with_another_random_value_in_d() {
     let (statement, mut witness) = random(18);
-    witness.d_randomness[0] ^= 1;
+    witness.runs[LAST].d_randomness[0] ^= 1;
     assert!(matches!(
         prover().prove(&statement, &witness),
         Err(ProveError::WrongWitness)
@@ -152,7 +158,7 @@ fn rejects_the_commitment_of_another_pad() {
     let (other_statement, _) = random(20);
     let proof = prover().prove(&statement, &witness).expect("proving");
     let mut wrong = statement;
-    wrong.d[0] = other_statement.d[0];
+    wrong.runs[LAST].d[0] = other_statement.runs[LAST].d[0];
     assert!(verifier().verify(&wrong, &proof).is_err());
 }
 
@@ -161,7 +167,8 @@ fn rejects_another_b_bar_prime() {
     let (statement, witness) = random(21);
     let proof = prover().prove(&statement, &witness).expect("proving");
     let mut wrong = statement;
-    wrong.b_bar_prime = reduce_delta(wrong.b_bar_prime + 1);
+    let run = &mut wrong.runs[LAST];
+    run.b_bar_prime = reduce_delta(run.b_bar_prime + 1);
     assert!(verifier().verify(&wrong, &proof).is_err());
 }
 
@@ -170,7 +177,7 @@ fn rejects_another_request() {
     let (statement, witness) = random(11);
     let proof = prover().prove(&statement, &witness).expect("proving");
     let mut wrong = statement;
-    wrong.e[N - 1] ^= 1;
+    wrong.runs[LAST].e[N - 1] ^= 1;
     assert!(verifier().verify(&wrong, &proof).is_err());
 }
 
@@ -179,7 +186,16 @@ fn rejects_another_response() {
     let (statement, witness) = random(12);
     let proof = prover().prove(&statement, &witness).expect("proving");
     let mut wrong = statement;
-    wrong.y[DELTA - 1] ^= 1;
+    wrong.runs[LAST].y[DELTA - 1] ^= 1;
+    assert!(verifier().verify(&wrong, &proof).is_err());
+}
+
+#[test]
+fn rejects_the_runs_in_another_order() {
+    let (statement, witness) = random(22);
+    let proof = prover().prove(&statement, &witness).expect("proving");
+    let mut wrong = statement;
+    wrong.runs.swap(0, LAST);
     assert!(verifier().verify(&wrong, &proof).is_err());
 }
 

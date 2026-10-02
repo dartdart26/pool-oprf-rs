@@ -5,6 +5,7 @@
 
 pub mod commitments;
 pub mod constraints;
+pub mod selectors;
 pub mod sponge;
 mod statements;
 
