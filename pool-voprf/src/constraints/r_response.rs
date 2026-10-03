@@ -4,9 +4,6 @@
 //! ```text
 //! y_j = ⌈(ã_Σ - j) mod q⌋ + r′_{(j - b̄′) mod Δ}   mod p,   j = 0 .. Δ-1
 //! ```
-//!
-//! `y` and `b̄′` are public. `ã_Σ` and `r′` are the witness. The proof
-//! does not use `b̄′` yet as that is left to (P).
 
 use crate::traits::Constraint;
 use pool_prf::params::{DELTA, Q, Zdelta, Zp, Zq};
