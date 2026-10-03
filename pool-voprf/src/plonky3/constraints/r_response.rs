@@ -12,13 +12,11 @@
 //! ```
 //!
 //! (R) checks the arithmetic only. It takes `ã_Σ` and `r′` as given, without
-//! checking that they are in `ℤ_q` and `ℤ_p` - (A) and (P) fix them.
+//! checking that they are in `ℤ_q` and `ℤ_p` - (A) and (P) pin them down.
 //!
 //! # Layout
 //!
-//! One row holds all of (R). Its columns, in order: `ã_Σ`, then the four
-//! rows below it for `j = 0`, then the same four for `j = 1`, and so on
-//! up to `j = Δ-1`.
+//! One row holds one entry `j`. Its columns, in order:
 //!
 //! | columns | content                                    |
 //! |---------|--------------------------------------------|
@@ -28,10 +26,21 @@
 //! | 1       | `pad_j`                                    |
 //! | 1       | `carry`: 1 if `⌈t_j⌋ + pad_j` reached `p`  |
 //!
-//! `ã_Σ` is the number itself, in one column.
+//! `ã_Σ` is the number itself, in one column. Entry `j` is on row `j`, and
+//! again every `Δ` rows.
 //!
-//! `j` has no column as the rules of entry `j` are written for that `j`, such
-//! that it is a constant in them.
+//! Each row gets its `j` and its `y_j` from the selectors `s_0 .. s_{Δ-1}`,
+//! see [`selectors`]. On the rows of entry `j`, `s_j` is 1 and every other
+//! selector is 0. So multiplying each selector by its entry's number, or by
+//! its entry's `y`, and adding up leaves only entry `j`'s:
+//!
+//! ```text
+//! j   = 0·s_0   + 1·s_1   + … + (Δ-1)·s_{Δ-1}
+//! y_j = y_0·s_0 + y_1·s_1 + … + y_{Δ-1}·s_{Δ-1}
+//! ```
+//!
+//! For example, on a row of entry 5 only `s_5` is 1, so `j = 5·1 = 5` and
+//! `y_j = y_5·1 = y_5`.
 //!
 //! # 1. `t_j` mod `q`
 //!
@@ -85,6 +94,7 @@
 //! y_j = ⌈t_j⌋ + pad_j - p·carry
 //! ```
 
+use crate::plonky3::selectors::{index, select, selectors};
 use crate::plonky3::{ROWS, Val};
 use p3_air::utils::pack_bits_le;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
@@ -94,17 +104,23 @@ use p3_matrix::dense::RowMajorMatrix;
 use pool_prf::modular::sub_q;
 use pool_prf::params::{DELTA, LOG_DELTA, LOG_Q, P, Q, Zdelta, Zp, Zq};
 use pool_prf::round::round;
+use std::borrow::Cow;
 
 const T_BITS: usize = LOG_Q as usize;
-/// The bits of `t_j`, `wrapped`, `pad_j`, `carry`.
-const ENTRY_COLS: usize = T_BITS + 3;
-/// `ã_Σ` and then the `Δ` entries.
-pub(crate) const NUM_COLS: usize = 1 + DELTA * ENTRY_COLS;
 
-/// Where `pad_j` is.
-pub(crate) const fn pad_column(j: usize) -> usize {
-    1 + j * ENTRY_COLS + T_BITS + 1
-}
+/// Where each part of the row starts.
+pub(crate) const A_SIGMA: usize = 0;
+const T: usize = A_SIGMA + 1;
+const WRAPPED: usize = T + T_BITS;
+pub(crate) const PAD: usize = WRAPPED + 1;
+const CARRY: usize = PAD + 1;
+pub(crate) const NUM_COLS: usize = CARRY + 1;
+/// `y_0 .. y_{Δ-1}`.
+const NUM_PUBLIC_VALUES: usize = DELTA;
+/// `s_0 .. s_{Δ-1}`.
+const NUM_PERIODIC_COLUMNS: usize = DELTA;
+
+const _: () = assert!(ROWS.is_multiple_of(DELTA), "the entries must repeat whole");
 
 /// `up` of step 2, from the bits `m` of the remainder. Lowest bit first in `m`.
 fn up<AB: AirBuilder>(m: &[AB::Var]) -> AB::Expr {
@@ -120,20 +136,54 @@ fn up<AB: AirBuilder>(m: &[AB::Var]) -> AB::Expr {
 pub struct ResponseAir;
 
 impl ResponseAir {
-    pub fn trace(a_sigma_sum: Zq, pads: &[Zp; DELTA], b_bar_prime: Zdelta) -> RowMajorMatrix<Val> {
-        let mut row = vec![Val::from_int(a_sigma_sum)];
+    /// The `Δ` entries for `ã_Σ`, the pads and `b̄′`, one row each: entry
+    /// `j` on row `j`.
+    pub fn entries(a_sigma_sum: Zq, pads: &[Zp; DELTA], b_bar_prime: Zdelta) -> Vec<Val> {
+        let mut rows = Vec::with_capacity(DELTA * NUM_COLS);
         for j in 0..DELTA {
             let t = sub_q(a_sigma_sum, j as Zq);
             let wrapped = a_sigma_sum < j as Zq;
             let rounded = round(t);
             let pad = pool_eval::pad(pads, j, b_bar_prime);
             let carry = (rounded + Zq::from(pad)) >= P;
-            row.extend((0..T_BITS).map(|k| Val::from_int((t >> k) & 1)));
-            row.push(Val::from_bool(wrapped));
-            row.push(Val::from_int(pad));
-            row.push(Val::from_bool(carry));
+            rows.push(Val::from_int(a_sigma_sum));
+            rows.extend((0..T_BITS).map(|k| Val::from_int((t >> k) & 1)));
+            rows.push(Val::from_bool(wrapped));
+            rows.push(Val::from_int(pad));
+            rows.push(Val::from_bool(carry));
         }
-        RowMajorMatrix::new(row.repeat(ROWS), NUM_COLS)
+        rows
+    }
+
+    /// The table - the entries, repeated to `ROWS` rows.
+    pub fn trace(a_sigma_sum: Zq, pads: &[Zp; DELTA], b_bar_prime: Zdelta) -> RowMajorMatrix<Val> {
+        let entries = Self::entries(a_sigma_sum, pads, b_bar_prime);
+        RowMajorMatrix::new(entries.repeat(ROWS / DELTA), NUM_COLS)
+    }
+
+    /// The rules for (R) on the row, for its entry `j` and `y_j`.
+    pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, j: AB::Expr, y_j: AB::Expr) {
+        let main = builder.main();
+        let row = main.current_slice();
+        let a_sigma_sum: AB::Expr = row[A_SIGMA].into();
+        let t_bits = &row[T..WRAPPED];
+        let (wrapped, pad, carry) = (row[WRAPPED], row[PAD], row[CARRY]);
+        for &bit in t_bits {
+            builder.assert_bool(bit);
+        }
+        builder.assert_bool(wrapped);
+        builder.assert_bool(carry);
+
+        // 1. t_j = ã_Σ - j + q·wrapped
+        let t = pack_bits_le::<AB::Expr, _, _>(t_bits.iter().copied());
+        builder.assert_eq(t, a_sigma_sum - j + wrapped * Val::from_int(Q));
+
+        // 2. ⌈t_j⌋ = quotient + up
+        let (m, quotient) = t_bits.split_at(LOG_DELTA);
+        let rounded = pack_bits_le::<AB::Expr, _, _>(quotient.iter().copied()) + up::<AB>(m);
+
+        // 3. y_j = ⌈t_j⌋ + pad_j - carry·p
+        builder.assert_eq(rounded + pad - carry * Val::from_int(P), y_j);
     }
 }
 
@@ -142,46 +192,30 @@ impl BaseAir<Val> for ResponseAir {
         NUM_COLS
     }
 
-    /// A row holds all of (R), so no rule reads the next row.
     fn main_next_row_columns(&self) -> Vec<usize> {
         vec![]
     }
 
     fn num_public_values(&self) -> usize {
-        DELTA
+        NUM_PUBLIC_VALUES
+    }
+
+    fn num_periodic_columns(&self) -> usize {
+        NUM_PERIODIC_COLUMNS
+    }
+
+    fn periodic_columns(&self) -> Cow<'_, [Vec<Val>]> {
+        Cow::Owned(selectors::<DELTA>(1).into())
     }
 }
 
 impl<AB: AirBuilder<F = Val>> Air<AB> for ResponseAir {
     fn eval(&self, builder: &mut AB) {
         let y: [AB::PublicVar; DELTA] = builder.public_values().try_into().expect("y");
-        let main = builder.main();
-        let row = main.current_slice();
-        let a_sigma_sum = row[0];
-        for (j, y_j) in y.into_iter().enumerate() {
-            let start = 1 + j * ENTRY_COLS; // after ã_Σ
-            let (t_bits, rest) = row[start..start + ENTRY_COLS].split_at(T_BITS);
-            let (wrapped, pad, carry) = (rest[0], rest[1], rest[2]);
-            for &bit in t_bits {
-                builder.assert_bool(bit);
-            }
-            builder.assert_bool(wrapped);
-            builder.assert_bool(carry);
-
-            // 1. t_j = ã_Σ - j + q·wrapped
-            let t = pack_bits_le::<AB::Expr, _, _>(t_bits.iter().copied());
-            builder.assert_eq(
-                t,
-                a_sigma_sum - Val::from_int(j) + wrapped * Val::from_int(Q),
-            );
-
-            // 2. ⌈t_j⌋ = quotient + up
-            let (m, quotient) = t_bits.split_at(LOG_DELTA);
-            let rounded = pack_bits_le::<AB::Expr, _, _>(quotient.iter().copied()) + up::<AB>(m);
-
-            // 3. y_j = ⌈t_j⌋ + pad_j - carry·p
-            builder.assert_eq(rounded + pad - carry * Val::from_int(P), y_j);
-        }
+        let s: [AB::PeriodicVar; DELTA] = builder.periodic_values().try_into().expect("s_j");
+        let j = index::<AB, DELTA>(&s);
+        let y_j = select::<AB, DELTA>(&s, y.map(Into::into));
+        Self::rules(builder, j, y_j);
     }
 }
 
@@ -250,18 +284,18 @@ mod tests {
     }
 
     /// With `ã_Σ = 3`, entry 0 has `t_0 = 3`, whose lowest two bits are 1, 1.
-    /// Writing them as 3, 0 violates the rule that columns of `t_0` are bits",
-    /// namely constraint 0.
+    /// Writing them as 3, 0 on the rows of entry 0 violates the rule that
+    /// columns of `t_0` are bits, namely constraint 0.
     #[test]
     fn a_bit_that_is_not_a_bit_is_refused() {
         let pads = [0; DELTA];
         let y = pool_eval::respond(3, &pads, 0);
         let mut trace = ResponseAir::trace(3, &pads, 0);
         assert!(report(&trace, &y).is_ok());
-        for row in trace.values.chunks_mut(NUM_COLS) {
-            assert_eq!(row[1..3], [Val::ONE, Val::ONE]);
-            row[1] = Val::from_int(3);
-            row[2] = Val::ZERO;
+        for row in trace.values.chunks_mut(NUM_COLS).step_by(DELTA) {
+            assert_eq!(row[T..T + 2], [Val::ONE, Val::ONE]);
+            row[T] = Val::from_int(3);
+            row[T + 1] = Val::ZERO;
         }
         let failures = report(&trace, &y).failures;
         assert!(!failures.is_empty());

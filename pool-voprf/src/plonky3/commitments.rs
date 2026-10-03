@@ -38,8 +38,10 @@ pub fn pack_randomness(randomness: CommitmentRandomness) -> [Element; RANDOMNESS
 /// A committed value and its random value as one array.
 pub const PAIR_ELEMENTS: usize = 1 + RANDOMNESS_ELEMENTS;
 
-pub fn pair<T>(value: T, randomness: [T; RANDOMNESS_ELEMENTS]) -> [T; PAIR_ELEMENTS] {
-    let mut elements = iter::once(value).chain(randomness);
+/// `a` then `b` as one array.
+pub fn concat<T, const A: usize, const B: usize, const C: usize>(a: [T; A], b: [T; B]) -> [T; C] {
+    const { assert!(A + B == C) };
+    let mut elements = a.into_iter().chain(b);
     array::from_fn(|_| elements.next().expect("an element"))
 }
 
