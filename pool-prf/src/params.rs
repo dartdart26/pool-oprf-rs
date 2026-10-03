@@ -77,6 +77,9 @@ pub const H_ROWS: usize = 16;
 /// PRF output length in ℤ_p elements: one per row of H.
 pub const OUTPUT_ELEMENTS: usize = H_ROWS;
 
+/// One evaluation consists of `OUTPUT_ELEMENTS` runs of the protocol.
+pub const RUNS_PER_EVALUATION: usize = OUTPUT_ELEMENTS;
+
 /// Security parameter λ in bits.
 pub const LAMBDA_BITS: usize = 128;
 
