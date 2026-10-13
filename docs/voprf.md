@@ -41,14 +41,13 @@ We call the results expanded from the binary OT blocks **masks**, e.g.
 
 ## 2. High level design
 
-In the paper's protocol, the server sends as messages:
+In the paper's protocol, the server sends only two non-OT messages:
  - `b̄` in preprocessing step 4
  - `y_0 .. y_{Δ-1}` as a response in the online phase
 
-Since the OTs are ideal ([section 6](#6-the-ot-underneath)), above are the
-server's only non-OT messages in the protocol. Without verifiability, the
-server can fake any of them undetected, with the OPRF output still looking
-random.
+Since the OTs are ideal ([section 6](#6-the-ot-underneath)) and without
+verifiability, above are the server's only messages it can fake undetected,
+with the OPRF output still looking random.
 
 To prove these non-OT messages, we add the following new messages to the
 protocol:
