@@ -434,15 +434,15 @@ mod tests {
 
     const TAG: &[u8] = b"tag-1";
 
-    fn seed(label: u64) -> Block {
+    fn ot_block(label: u64) -> Block {
         let mut bytes = [0u8; Block::BYTES];
         bytes[..8].copy_from_slice(&label.to_le_bytes());
         Block::new(bytes)
     }
 
     fn test_client_state(tau: usize) -> ClientState {
-        let r_seeds: Vec<[Block; 2]> = (0..N as u64)
-            .map(|i| [seed(2 * i), seed(2 * i + 1)])
+        let ot_blocks: Vec<[Block; 2]> = (0..N as u64)
+            .map(|i| [ot_block(2 * i), ot_block(2 * i + 1)])
             .collect();
         let bhat: Vec<u8> = (0..N).map(|i| (i % 2) as u8).collect();
         let r_c: Vec<RcEntry> = (0..tau)
@@ -451,7 +451,7 @@ mod tests {
                 r_prime: reduce_p(j as ZpAccum),
             })
             .collect();
-        ClientState::new(r_seeds, bhat, r_c, [7u8; LAMBDA_BYTES])
+        ClientState::new(ot_blocks, bhat, r_c, [7u8; LAMBDA_BYTES])
     }
 
     #[test]
@@ -512,16 +512,16 @@ mod tests {
     /// A client/server state pair as PreProc (Figure 3) would leave it.
     fn matched_states(sk: &SecretKey, tau: usize) -> (ClientState, ServerState) {
         let uid = [9u8; LAMBDA_BYTES];
-        let mut r_seeds = Vec::with_capacity(N);
+        let mut ot_blocks = Vec::with_capacity(N);
         let mut r_s = Vec::with_capacity(N);
         let mut bhat = Vec::with_capacity(N);
         for i in 0..N {
-            let pair = [seed(2 * i as u64), seed(2 * i as u64 + 1)];
+            let pair = [ot_block(2 * i as u64), ot_block(2 * i as u64 + 1)];
             let b = u8::from(i % 3 == 0); // server's OT choice bits
-            r_seeds.push(pair);
+            ot_blocks.push(pair);
             r_s.push(RsEntry {
                 b,
-                r_seed: pair[b as usize],
+                ot_block: pair[b as usize],
             });
             bhat.push(b ^ sk.as_bits()[i]);
         }
@@ -540,7 +540,7 @@ mod tests {
             s_s.push(pads);
         }
         (
-            ClientState::new(r_seeds, bhat, r_c, uid),
+            ClientState::new(ot_blocks, bhat, r_c, uid),
             ServerState::new(r_s, s_s, uid),
         )
     }
