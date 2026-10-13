@@ -1,11 +1,11 @@
 # Pool VOPRF: the server's proofs
 
 - [1. Introduction](#1-introduction)
-- [2. What the server can fake](#2-what-the-server-can-fake)
+- [2. High level design](#2-high-level-design)
 - [3. Server proofs](#3-server-proofs)
   - [Response equation](#response-equation)
   - [Statements](#statements)
-  - [Why the constraints are enough](#why-the-constraints-are-enough)
+  - [Proving the response](#proving-the-response)
   - [Constraints](#constraints)
 - [4. Why zero-knowledge](#4-why-zero-knowledge)
 - [5. Proof system](#5-proof-system)
@@ -16,35 +16,47 @@
 This note explains what a server needs to prove for Figures 3 and 4
 of the paper to make it a verifiable and post-quantum OPRF. 
 
-A run of the protocol gives one output element of `ℤ_p`, i.e. 8 bits. An
+A **run** of the protocol gives one output element of `ℤ_p`, i.e. 8 bits. An
 **evaluation** is `RUNS_PER_EVALUATION = 16` runs and that gives 128 bits
-of output. A superscript `k` marks the run, `k = 0 .. RUNS_PER_EVALUATION-1`,
-as in response `y^k_j`. The online proof covers one evaluation.
+of output. A superscript `k` marks the run with `k = 0 .. RUNS_PER_EVALUATION-1`,
+as in response `y^k_j`. The online proof we aim at covers one evaluation.
 
-We introduce `pk`, a commitment to secret key `sk`, that the server publishes once.
-If the client is convinced the server response is correct, it accepts it as `F_sk(t, x)`
-for the `sk` committed to by `pk`.
+We introduce `pk`, a commitment to secret key `sk`, that the server
+publishes once. If the client is convinced the server response is correct,
+it accepts it as `F_sk(t, x)` - the PRF's output on its tag `t` and input
+`x`, under the `sk` committed to by `pk`.
 
-Pool runs two random OTs and the paper treats them as ideal: a box that
+Pool runs two random OTs and this note treats them as ideal: a box that
 hands each party its outputs and reveals nothing else. This note uses
-maliciously secure OT, which behaves like that box even when one party
-cheats. [Section 6](#6-the-ot-underneath) talks more about the underlying OT.
+maliciously secure OT, which behaves like that box even when either party
+cheats. [Section 6](#6-the-ot-underneath) talks more about the underlying OTs.
 
-We call the results derived from the binary OTs **masks**, e.g. `r^k_{b_i, i}`,
-and the Δ OT ones **pads**, e.g. `r′^k_j`.
+We call the results expanded from the binary OTs' blocks **masks**, e.g. `r^k_{b_i, i}`,
+and from the Δ OT's blocks **pads**, e.g. `r′^k_j`.
 
-## 2. What the server can fake
+## 2. High level design
 
 In the paper's protocol, the server sends as messages:
  - `pk` once
- - `b̄` in preprocessing step 4, 
- - `y_0 .. y_{Δ-1}` as a response in the online phase.
+ - `b̄` in preprocessing step 4
+ - `y_0 .. y_{Δ-1}` as a response in the online phase
 
-Since the OTs are ideal ([section 6](#6-the-ot-underneath)), above are the server's
-only other messages in the protocol. Without verifiability, the server can fake any
-of them undetected, with the OPRF output still looking random.
+Since the OTs are ideal ([section 6](#6-the-ot-underneath)), above are the
+server's only non-OT messages in the protocol. Without verifiability, the
+server can fake any of them undetected, with the OPRF output still looking
+random.
 
-These are the messages we focus on in this note.
+To prove these non-OT messages, we the following new messages to the protocol:
+
+| message                                            | description                                       | direction        | when                            |
+| -------------------------------------------------- | ------------------------------------------------- | ---------------- | ------------------------------- |
+| `pk`                                               | commitment to the server's `sk`                   | server -> client | setup                           |
+| `π_setup`                                          | proof of the setup statement                      | server -> client | setup                           |
+| `c_{0, 0} .. c_{0, n-1}`, `c_{1, 0} .. c_{1, n-1}` | commitments to the client's OT blocks             | client -> server | after preprocessing step 2      |
+| `d^k_0 .. d^k_{Δ-1}`                               | commitments to the server's pads for each run `k` | server -> client | after preprocessing step 3      |
+| `m`                                                | one commitment per evaluation to `r̃^k_Σ`          | server -> client | end of preprocessing            |
+| `π_preproc`                                        | proof of the preprocessing statement              | server -> client | end of preprocessing            |
+| `π_online`                                         | proof of the online statement                     | server -> client | with each evaluation's response |
 
 ## 3. Server proofs
 
@@ -82,13 +94,16 @@ r^k_Σ  = Σ_i r^k_{b̄_i, i}                                                  m
 y^k_j  = ⌈(Σ_i sk_i·e^k_i + r̃^k_Σ - j) mod q⌋ + r′^k_{(j - b̄′^k) mod Δ}    mod p
 ```
 
-The point of writing `ã_Σ` as above is to separate it into two terms - one that
-depends on the online request and one that only depends on preprocessing. That way
-we can make the online proof smaller and faster.
+One way to look at `y^k_j` is a sum of two parts. The rounded part comes
+from the binary OTs, through the masks in `r̃^k_Σ`. The other part is the pad
+`r′^k_{(j - b̄′^k) mod Δ}` from the 1-out-of-Δ OT.
 
-The server does not know `j*`, so it has to prove the equation for `y_j` at every `j`, not just at `j*`.
+Furthermore, the point of writing `ã_Σ` as above is to separate it into two
+terms - one that depends on the online request and one that only depends on
+preprocessing. That way we can make the online proof smaller and faster.
 
-The inputs to the equation are, therefore:
+The server does not know `j*`, so it has to prove the equation for `y_j` at
+every `j`, not just at `j*`.
 
 | symbol                 | domain       | in the proof | constraint |
 | ---------------------- | ------------ | ------------ | ---------- |
@@ -117,7 +132,7 @@ constraints are in [Constraints](#constraints).
 | preprocessing | at the end of preprocessing | `b̄`, `m`                  | (K) (M) (X) (T) (S) |
 | online        | with every response         | `y`, `d`                  | (K) (M) (P) (A) (R) |
 
-### Why the constraints are enough
+### Proving the response
 
 `y_{j*}` is correct only if the server used the right public values, its
 secret key `sk`, its own masks (`r̃_Σ`) and the pad the client holds. The
@@ -126,24 +141,21 @@ its own copies. The secret values each come from something the client
 trusts, through a chain of constraints. Read `->` as "pins down":
 
 ```
-       preprocessing proof                                    online proof
-key    pk -(K)-> sk                                           pk -(K)-> sk
-masks  c -(S)-> block -(X)-> masks -(T)-> r̃_Σ -(M)-> m        m -(M)-> r̃_Σ
-pad                                                           d -(P)-> pads
+key     pk -(K)-> sk
+masks   c_{0, i}, c_{1, i} -(S)-> the server's block -(X)-> the server's masks -(T)-> r̃_Σ -(M)-> m
+pads    d^k_0 .. d^k_{Δ-1} -(P)-> the server's pads
 ```
 
 The chains rest on four commitments, all made before the request:
 
 - `pk`, the server's commitment to `sk`, published at setup.
-- `c`, the client's commitment to both binary OT blocks of every `i`, after
-  preprocessing step 2.
-- `d`, the server's commitment to its `Δ` pads, after preprocessing step 3.
+- `c_{0, i}`, `c_{1, i}`, the client's commitments to its two blocks of each `i`
+- `d^k_0 .. d^k_{Δ-1}`, the server's commitments to its pads of run `k`
 - `m`, the server's commitment to `r̃_Σ`, at the end of preprocessing. The
   preprocessing proof pins it down from `c`. The online proof opens the same
   `m`, therefore it uses the same `r̃_Σ`.
 
-Online, (A) and (R) compute `y` from `sk`, `r̃_Σ` and the pads, so `y_{j*}`
-can only be the honest one.
+Every link is checked, so `y_{j*}` can only be the honest one.
 
 ### Constraints
 
