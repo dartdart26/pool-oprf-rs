@@ -8,7 +8,7 @@
 //! The paper says each binary-rOT message is a vector of τ ℤ_q elements,
 //! i.e. randomness from the OT. Our OTs output a 128-bit [`Block`] per
 //! message, so we take that randomness and expand it via BLAKE3: entry j of
-//! the vector is `derive_r(block, j)`, computed on demand instead of
+//! the vector is `expand(ot_block, j)`, computed on demand instead of
 //! stored.
 
 use crate::delta_ot::{delta_ot_receive, delta_ot_send};
@@ -73,7 +73,7 @@ pub const fn evaluations_for(slots: usize) -> usize {
     slots / H_ROWS
 }
 
-/// Domain separator for deriving the `r` masks from OT seed Blocks.
+/// Domain separator for expanding OT blocks into the `r` masks.
 const R_DOMAIN_SEPARATOR: &str = "pool-oprf v1 zq mask from ot seed";
 
 /// Bytes of XOF output each mask is cut from.
@@ -87,9 +87,9 @@ const MASK_BYTES: usize = size_of::<Zq>();
 ///
 /// `H_ROWS` at once rather than one at a time: an evaluation spends `H_ROWS`
 /// consecutive slots, and a single hash setup covers all of them.
-pub(crate) fn derive_r(seed: &Block, first_slot: u64) -> [Zq; H_ROWS] {
+pub(crate) fn expand(ot_block: &Block, first_slot: u64) -> [Zq; H_ROWS] {
     let mut hasher = blake3::Hasher::new_derive_key(R_DOMAIN_SEPARATOR);
-    hasher.update(seed.as_bytes());
+    hasher.update(ot_block.as_bytes());
     let mut xof = hasher.finalize_xof();
     xof.set_position(first_slot * MASK_BYTES as u64);
 
@@ -169,10 +169,10 @@ impl Slots {
 
 /// Client-side preprocessing state in Figure 3.
 pub struct ClientState {
-    /// `S_C` stored as seeds.
-    /// `r_seeds[i][0]` expands to the mask vector `(r^0_{0,i}, ..., r^{τ-1}_{0,i})`,
-    /// `r_seeds[i][1]` expands to the mask vector `(r^0_{1,i}, ..., r^{τ-1}_{1,i})`.
-    r_seeds: [[Block; 2]; N],
+    /// `S_C` stored as OT blocks.
+    /// `ot_blocks[i][0]` expands to the mask vector `(r^0_{0,i}, ..., r^{τ-1}_{0,i})`,
+    /// `ot_blocks[i][1]` expands to the mask vector `(r^0_{1,i}, ..., r^{τ-1}_{1,i})`.
+    ot_blocks: [[Block; 2]; N],
 
     /// `b̄_i = b_i ⊕ sk_i`, the masked key bits. One byte per bit,
     /// values 0 or 1.
@@ -192,7 +192,7 @@ pub(crate) struct RsEntry {
     /// `b_i`, 0 or 1.
     pub(crate) b: u8,
     /// Expands to `(r^0_{b_i,i}, ..., r^{τ-1}_{b_i,i})`.
-    pub(crate) r_seed: Block,
+    pub(crate) ot_block: Block,
 }
 
 impl std::fmt::Debug for RsEntry {
@@ -204,7 +204,7 @@ impl std::fmt::Debug for RsEntry {
 impl Zeroize for RsEntry {
     fn zeroize(&mut self) {
         self.b.zeroize();
-        self.r_seed.as_mut_bytes().zeroize();
+        self.ot_block.as_mut_bytes().zeroize();
     }
 }
 
@@ -229,16 +229,16 @@ fn into_array<T: Copy, const N: usize>(mut v: Vec<T>, what: &str) -> [T; N] {
 
 impl ClientState {
     pub(crate) fn new(
-        r_seeds: Vec<[Block; 2]>,
+        ot_blocks: Vec<[Block; 2]>,
         bhat: Vec<u8>,
         r_c: Vec<RcEntry>,
         uid: Uid,
     ) -> Self {
-        let r_seeds: [[Block; 2]; N] = into_array(r_seeds, "N binary rOT seed pairs");
+        let ot_blocks: [[Block; 2]; N] = into_array(ot_blocks, "N binary rOT block pairs");
         let bhat: [u8; N] = into_array(bhat, "N masked key bits");
         let slots = Slots::new(r_c.len());
         Self {
-            r_seeds,
+            ot_blocks,
             bhat,
             r_c,
             uid,
@@ -256,12 +256,12 @@ impl ClientState {
 
     /// `r^j_{b̄_i,i}` onward, the client's blinding masks for coordinate `i`.
     pub(crate) fn r_bhat(&self, i: usize, first_slot: u64) -> [Zq; H_ROWS] {
-        derive_r(&self.r_seeds[i][self.bhat[i] as usize], first_slot)
+        expand(&self.ot_blocks[i][self.bhat[i] as usize], first_slot)
     }
 
     /// `r^j_{1-b̄_i,i}` onward, the side not used for blinding.
     pub(crate) fn r_not_bhat(&self, i: usize, first_slot: u64) -> [Zq; H_ROWS] {
-        derive_r(&self.r_seeds[i][1 - self.bhat[i] as usize], first_slot)
+        expand(&self.ot_blocks[i][1 - self.bhat[i] as usize], first_slot)
     }
 
     pub(crate) fn r_c(&self, j: u64) -> RcEntry {
@@ -286,9 +286,9 @@ impl std::fmt::Debug for ClientState {
 
 impl Zeroize for ClientState {
     fn zeroize(&mut self) {
-        for pair in &mut self.r_seeds {
-            for seed in pair {
-                seed.as_mut_bytes().zeroize();
+        for pair in &mut self.ot_blocks {
+            for ot_block in pair {
+                ot_block.as_mut_bytes().zeroize();
             }
         }
         self.bhat.zeroize();
@@ -326,7 +326,7 @@ impl ServerState {
 
     /// `r^j_{b_i,i}` onward, the masks the server knows for binary OT `i`.
     pub(crate) fn r(&self, i: usize, first_slot: u64) -> [Zq; H_ROWS] {
-        derive_r(&self.r_s[i].r_seed, first_slot)
+        expand(&self.r_s[i].ot_block, first_slot)
     }
 
     pub(crate) fn s_s(&self, j: u64) -> &[Zp; DELTA] {
@@ -463,11 +463,11 @@ pub async fn preproc_client(
         return Err(PreprocError::TauMismatch { ours: tau, theirs });
     }
 
-    // Line (2): N binary rOTs with the client as sender. Keep the seed
+    // Line (2): N binary rOTs with the client as sender. Keep the OT block
     // pairs.
     let mut sender = ot_sender(binary_ot_conn);
-    let mut r_seeds = sender.send(BINARY_OT_COUNT).await?;
-    r_seeds.truncate(N);
+    let mut ot_blocks = sender.send(BINARY_OT_COUNT).await?;
+    ot_blocks.truncate(N);
 
     // Line (3): tau 1-out-of-Δ rOTs with the client as receiver.
     let mut receiver = ot_receiver(delta_ot_conn);
@@ -494,7 +494,7 @@ pub async fn preproc_client(
         return Err(PreprocError::Malformed("b_hat entries must be bits"));
     }
 
-    Ok(ClientState::new(r_seeds, bhat, r_c, uid))
+    Ok(ClientState::new(ot_blocks, bhat, r_c, uid))
 }
 
 /// Run the server side of PreProc (Figure 3).
@@ -544,14 +544,14 @@ pub async fn preproc_server(
 
     // Line (2): N binary rOTs with the server as receiver.
     let mut receiver = ot_receiver(binary_ot_conn);
-    let (r_seeds, choices) = receiver.rand_choice_receive(BINARY_OT_COUNT).await?;
+    let (ot_blocks, choices) = receiver.rand_choice_receive(BINARY_OT_COUNT).await?;
     let r_s: Vec<RsEntry> = choices
         .iter()
-        .zip(r_seeds)
+        .zip(ot_blocks)
         .take(N)
-        .map(|(c, r_seed)| RsEntry {
+        .map(|(c, ot_block)| RsEntry {
             b: c.unwrap_u8(),
-            r_seed,
+            ot_block,
         })
         .collect();
 
@@ -581,29 +581,29 @@ mod tests {
     use pool_prf::params::Q;
 
     #[test]
-    fn derive_r_deterministic_and_in_range() {
-        let seed = Block::new([7u8; Block::BYTES]);
+    fn expand_deterministic_and_in_range() {
+        let ot_block = Block::new([7u8; Block::BYTES]);
         for j in 0..1000 {
-            let r = derive_r(&seed, j)[0];
-            assert_eq!(r, derive_r(&seed, j)[0]);
+            let r = expand(&ot_block, j)[0];
+            assert_eq!(r, expand(&ot_block, j)[0]);
             assert!(r < Q);
         }
     }
 
     #[test]
-    fn derive_r_differs_across_slots_and_seeds() {
-        let seed_a = Block::new([1u8; Block::BYTES]);
-        let seed_b = Block::new([2u8; Block::BYTES]);
+    fn expand_differs_across_slots_and_ot_blocks() {
+        let ot_block_a = Block::new([1u8; Block::BYTES]);
+        let ot_block_b = Block::new([2u8; Block::BYTES]);
 
         assert_ne!(
-            derive_r(&seed_a, 0),
-            derive_r(&seed_a, 1),
+            expand(&ot_block_a, 0),
+            expand(&ot_block_a, 1),
             "a later slot gives different masks"
         );
         assert_ne!(
-            derive_r(&seed_a, 0),
-            derive_r(&seed_b, 0),
-            "a different seed gives different masks"
+            expand(&ot_block_a, 0),
+            expand(&ot_block_b, 0),
+            "a different OT block gives different masks"
         );
     }
 
