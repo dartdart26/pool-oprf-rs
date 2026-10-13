@@ -15,23 +15,15 @@
 //! `RANDOMNESS_ELEMENTS` columns, then Poseidon2's columns, as in (M).
 //! Entry `j` is on row `j`, and again every `Δ` rows.
 //!
-//! Next to them are `Δ` periodic columns, `s_0 .. s_{Δ-1}`. `s_j` is the
-//! selector of entry `j`: 1 on its rows, 0 on the others, see
-//! [`selectors`].
-//!
-//! | row      |     | `pad_j`     | random value   | Poseidon2      |     | `s_0` | `s_1` | … | `s_{Δ-1}` |
-//! |----------|-----|-------------|----------------|----------------|-----|-------|-------|---|-----------|
-//! | `0`      | c   | `pad_0`     | of `pad_0`     | of `pad_0`     | p   | 1     | 0     | … | 0         |
-//! | `1`      | o   | `pad_1`     | of `pad_1`     | of `pad_1`     | e   | 0     | 1     | … | 0         |
-//! | `2`      | m   | `pad_2`     | of `pad_2`     | of `pad_2`     | r   | 0     | 0     | … | 0         |
-//! | …        | m   | …           | …              | …              | i   | …     | …     | … | …         |
-//! | `Δ-1`    | i → | `pad_{Δ-1}` | of `pad_{Δ-1}` | of `pad_{Δ-1}` | o → | 0     | 0     | … | 1         |
-//! | `Δ`      | t   | `pad_0`     | of `pad_0`     | of `pad_0`     | d   | 1     | 0     | … | 0         |
-//! | `Δ+1`    | t   | `pad_1`     | of `pad_1`     | of `pad_1`     | i   | 0     | 1     | … | 0         |
-//! | …        | e   | …           | …              | …              | c   | …     | …     | … | …         |
-//! | `2Δ-1`   | d   | `pad_{Δ-1}` | of `pad_{Δ-1}` | of `pad_{Δ-1}` |     | 0     | 0     | … | 1         |
-//! | …        |     | …           | …              | …              |     | …     | …     | … | …         |
-//! | `ROWS-1` |     | `pad_{Δ-1}` | of `pad_{Δ-1}` | of `pad_{Δ-1}` |     | 0     | 0     | … | 1         |
+//! | row       | `pad_j`     | random value   | Poseidon2      |
+//! |-----------|-------------|----------------|----------------|
+//! | `0`       | `pad_0`     | of `pad_0`     | of `pad_0`     |
+//! | `1`       | `pad_1`     | of `pad_1`     | of `pad_1`     |
+//! | …         | …           | …              | …              |
+//! | `Δ-1`     | `pad_{Δ-1}` | of `pad_{Δ-1}` | of `pad_{Δ-1}` |
+//! | `Δ`       | `pad_0`     | of `pad_0`     | of `pad_0`     |
+//! | …         | …           | …              | …              |
+//! | `Δ·k + j` | `pad_j`     | of `pad_j`     | of `pad_j`     |
 //!
 //! # 1. The hash
 //!
@@ -40,7 +32,8 @@
 //! slots.
 //!
 //! The permutation ends in the `d` of the row's entry. The rules are the
-//! same on every row, so the rule says which `d` with the selectors:
+//! same on every row, so the rule says which `d` with the selectors, see
+//! [`selectors`]:
 //!
 //! ```text
 //! hash = s_0·d_0 + s_1·d_1 + … + s_{Δ-1}·d_{Δ-1}

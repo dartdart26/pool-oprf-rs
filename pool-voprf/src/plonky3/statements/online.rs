@@ -1,70 +1,50 @@
-//! The online statement on Plonky3. Its constraints are (K), (A), (R), (M)
-//! and (P).
+//! The online statement on Plonky3.
 //!
 //! # Layout
 //!
 //! One proof covers one evaluation i.e. `RUNS_PER_EVALUATION` runs. Each run
 //! gets `Δ` consecutive rows, one per entry `j` of its response `y_j`:
 //! run 0 is rows `0 .. Δ-1`, run 1 is rows `Δ .. 2Δ-1`, and so
-//! on. So entry `j` of run `k` is on row `Δ·k + j`, and the table has
+//! on. Entry `j` of run `k` is on row `Δ·k + j`, and the table has
 //! `RUNS_PER_EVALUATION·Δ = ROWS` rows.
 //!
-//! Each row holds the columns of all five constraints side by side, one
-//! block each:
+//! Each row holds the columns of all constraints side by side.
 //!
-//! | row      |     | (K)      | (M)       | (A)                  | (R)                      | (P)                        |     | `s_0` | … | `s_{Δ-1}` | `u_0` | … | `u_{RUNS_PER_EVALUATION-1}` |
-//! |----------|-----|----------|-----------|----------------------|--------------------------|----------------------------|-----|-------|---|-----------|-------|---|-----------------------------|
-//! | `0`      | c   | for `sk` | for `r̃_Σ` | for run 0's `ã_Σ`    | for run 0's `y_0`        | for run 0's `pad_0`        | p   | 1     | … | 0         | 1     | … | 0                           |
-//! | `1`      | o   | for `sk` | for `r̃_Σ` | for run 0's `ã_Σ`    | for run 0's `y_1`        | for run 0's `pad_1`        | e   | 0     | … | 0         | 1     | … | 0                           |
-//! | `2`      | m   | for `sk` | for `r̃_Σ` | for run 0's `ã_Σ`    | for run 0's `y_2`        | for run 0's `pad_2`        | r   | 0     | … | 0         | 1     | … | 0                           |
-//! | …        | m   | …        | …         | …                    | …                        | …                          | i   | …     | … | …         | …     | … | …                           |
-//! | `Δ-1`    | i → | for `sk` | for `r̃_Σ` | for run 0's `ã_Σ`    | for run 0's `y_{Δ-1}`    | for run 0's `pad_{Δ-1}`    | o → | 0     | … | 1         | 1     | … | 0                           |
-//! | `Δ`      | t   | for `sk` | for `r̃_Σ` | for run 1's `ã_Σ`    | for run 1's `y_0`        | for run 1's `pad_0`        | d   | 1     | … | 0         | 0     | … | 0                           |
-//! | `Δ+1`    | t   | for `sk` | for `r̃_Σ` | for run 1's `ã_Σ`    | for run 1's `y_1`        | for run 1's `pad_1`        | i   | 0     | … | 0         | 0     | … | 0                           |
-//! | …        | e   | …        | …         | …                    | …                        | …                          | c   | …     | … | …         | …     | … | …                           |
-//! | `2Δ-1`   | d   | for `sk` | for `r̃_Σ` | for run 1's `ã_Σ`    | for run 1's `y_{Δ-1}`    | for run 1's `pad_{Δ-1}`    |     | 0     | … | 1         | 0     | … | 0                           |
-//! | …        |     | …        | …         | …                    | …                        | …                          |     | …     | … | …         | …     | … | …                           |
-//! | `ROWS-1` |     | for `sk` | for `r̃_Σ` | for last run's `ã_Σ` | for last run's `y_{Δ-1}` | for last run's `pad_{Δ-1}` |     | 0     | … | 1         | 0     | … | 1                           |
+//! | row       | (K)          | (M)           | (A)                      | (R)                          | (P)                            |
+//! |-----------|--------------|---------------|--------------------------|------------------------------|--------------------------------|
+//! | `0`       | (K) for `sk` | (M) for `r̃_Σ` | (A) for run 0's `ã_Σ`    | (R) for run 0's `y_0`        | (P) for run 0's `pad_0`        |
+//! | `1`       | (K) for `sk` | (M) for `r̃_Σ` | (A) for run 0's `ã_Σ`    | (R) for run 0's `y_1`        | (P) for run 0's `pad_1`        |
+//! | …         | …            | …             | …                        | …                            | …                              |
+//! | `Δ-1`     | (K) for `sk` | (M) for `r̃_Σ` | (A) for run 0's `ã_Σ`    | (R) for run 0's `y_{Δ-1}`    | (P) for run 0's `pad_{Δ-1}`    |
+//! | `Δ`       | (K) for `sk` | (M) for `r̃_Σ` | (A) for run 1's `ã_Σ`    | (R) for run 1's `y_0`        | (P) for run 1's `pad_0`        |
+//! | …         | …            | …             | …                        | …                            | …                              |
+//! | `Δ·k + j` | (K) for `sk` | (M) for `r̃_Σ` | (A) for run k's `ã_Σ`    | (R) for run k's `y_j`        | (P) for run k's `pad_j`        |
+//! | …         | …            | …             | …                        | …                            | …                              |
+//! | `ROWS-1`  | (K) for `sk` | (M) for `r̃_Σ` | (A) for last run's `ã_Σ` | (R) for last run's `y_{Δ-1}` | (P) for last run's `pad_{Δ-1}` |
 //!
-//! What each block's columns hold:
+//! (K) and (M) are the same on every row, because `sk` is the same in every run
+//! and (M) holds the `r̃_Σ` of all runs at once.
+//! 
+//! (A) is the same on the `Δ` rows of a run, because `ã_Σ` does not depend on `j`.
+//! 
+//! (R) and (P) change on every row.
 //!
-//! | block | its columns                                                                  |
-//! |-------|------------------------------------------------------------------------------|
-//! | (K)   | the bits of `sk`, and Poseidon2's columns to hash them into `pk`             |
-//! | (M)   | the `r̃_Σ` of all runs, their random value, and Poseidon2's columns for `m`   |
-//! | (A)   | the bits of `sk`, the run's `r̃_Σ`, and the bits of `ã_Σ` and of the quotient |
-//! | (R)   | `ã_Σ`, the bits of `t_j`, `wrapped`, `pad_j` and `carry`                     |
-//! | (P)   | `pad_j`, its random value, and Poseidon2's columns to hash them into `d_j`   |
-//!
-//! (K) and (M) are the same on every row. `sk` is the same in every run,
-//! and (M) holds the `r̃_Σ` of all runs at once, since `m` commits to them
-//! together. (A) is the same on the `Δ` rows of a run: `ã_Σ`
-//! depends on `sk`, the run's `e` and its `r̃_Σ`, but not on `j`. (R) and
-//! (P) change on every row: row `Δ·k + j` holds entry `j` of run `k`.
-//!
-//! `s_j` is 1 on the rows of entry `j` and `u_k` on the rows of run `k`, 0
-//! on the others. They are not columns of the table: they are periodic,
-//! both sides compute them, see [`selectors`].
-//!
-//! The public values are `pk` and `m`, then `e`, `y` and `d` of each run.
+//! The public values are `pk` and `m`, `e`, `y` and `d`.
 //!
 //! # 1. The constraints
 //!
-//! Each constraint checks its own columns with its own rules, on every
-//! row. (K) and (M) check against `pk` and `m`. (A), (R) and (P) check
-//! against the public values of the row's run, which `u` picks out:
+//! Each constraint checks its own block of columns on every row. Some of
+//! its rules compare the block with a public value, and which public value
+//! that is depends on the row:
 //!
-//! ```text
-//! value = u_0·value_0 + u_1·value_1 + …
-//!         + u_{RUNS_PER_EVALUATION-1}·value_{RUNS_PER_EVALUATION-1}
-//! ```
+//! - (K) and (M) use `pk` and `m`, the same on every row.
+//! - (A) uses the request `e`: on the rows of run `k`, run `k`'s `e`.
+//! - (R) uses the response: on row `Δ·k + j`, run `k`'s `y_j`.
+//! - (P) uses the pad commitments: on row `Δ·k + j`, run `k`'s `d` for
+//!   entry `j`.
 //!
-//! On the rows of run `k`, `u_k` is 1 and the others are 0, so the right
-//! side is `value_k`. For (R) and (P), `s` then picks the `y_j` and `d` of
-//! the row's entry out of the run's `Δ`.
-//!
-//! Nothing ties the rows of a run to one another. Each row opens `pk`,
-//! `m` and its `d` on its own, so every row holds what they commit to.
+//! The selectors pick these out, see [`selectors`]: `u_k` is 1 on the rows
+//! of run `k`, and `s_j` is 1 on the rows of entry `j`.
 //!
 //! # 2. The values they share
 //!
