@@ -2,8 +2,9 @@
 //! evaluation and a random value.
 
 use crate::CommitmentRandomness;
+use crate::hash_domains::Domain;
 use crate::plonky3::commitments::{
-    Commitment, Domain, Element, RANDOMNESS_ELEMENTS, concat, pack_randomness,
+    Commitment, Element, RANDOMNESS_ELEMENTS, concat, pack_randomness,
 };
 use p3_field::integers::QuotientMap;
 use pool_prf::params::{RUNS_PER_EVALUATION, Zq};

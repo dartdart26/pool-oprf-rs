@@ -2,6 +2,8 @@
 //!
 //! Each kind of commitment includes its [`Domain`], such that no two kinds
 //! hash to the same output.
+//!
+//! [`Domain`]: crate::hash_domains::Domain
 
 pub mod key;
 pub mod mask_sum;
@@ -59,18 +61,6 @@ pub fn permutation() -> Permutation {
 
 pub fn sponge() -> Sponge {
     Sponge::new(permutation())
-}
-
-// Each commitment has a separate domain to ensure no two kinds hash to the same output.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(u32)]
-pub enum Domain {
-    /// (K): the server's key.
-    Key = 1,
-    /// (M): `r̃_Σ` and a random value.
-    MaskSum = 2,
-    /// (P): a pad and a random value.
-    Pad = 3,
 }
 
 /// A commitment of one kind, to `LEN` elements. Both are in the type, such

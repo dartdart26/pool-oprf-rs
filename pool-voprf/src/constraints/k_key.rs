@@ -1,5 +1,8 @@
-//! Constraint (K) from `docs/voprf.md`: `sk` opens `pk`, and each `sk_i` is
-//! either 0 or 1.
+//! Constraint (K) from `docs/voprf.md`.
+//!
+//! ```text
+//! pk = Commit(Domain::Key, sk),   each sk_i in {0, 1}
+//! ```
 //!
 //! `pk` is a [`Commitment`] to `sk`.
 

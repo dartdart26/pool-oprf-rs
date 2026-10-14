@@ -1,4 +1,8 @@
-//! Constraint (K) on Plonky3.
+//! Constraint (K) on Plonky3:
+//!
+//! ```text
+//! pk = Commit(Domain::Key, sk),   each sk_i in {0, 1}
+//! ```
 //!
 //! In order, Poseidon2 takes `WIDTH` slots:
 //!

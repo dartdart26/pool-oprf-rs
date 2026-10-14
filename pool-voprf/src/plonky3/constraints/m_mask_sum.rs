@@ -1,4 +1,8 @@
-//! Constraint (M) on Plonky3: the `r̃_Σ` of every run open `m`.
+//! Constraint (M) on Plonky3:
+//!
+//! ```text
+//! m = Commit(Domain::MaskSum, r̃^0_Σ .. r̃^{RUNS_PER_EVALUATION-1}_Σ, randomness)
+//! ```
 //!
 //! # Layout
 //!

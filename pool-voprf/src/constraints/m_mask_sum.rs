@@ -1,7 +1,8 @@
 //! Constraint (M) from `docs/voprf.md`.
 //!
-//! `m` is a [`Commitment`] to the `r̃_Σ` of every run of an evaluation and
-//! a random value.
+//! ```text
+//! m = Commit(Domain::MaskSum, r̃^0_Σ .. r̃^{RUNS_PER_EVALUATION-1}_Σ, randomness)
+//! ```
 
 use crate::CommitmentRandomness;
 use crate::traits::{Commitment, Constraint};
