@@ -1,9 +1,8 @@
 //! `d_j` is a [`PadCommitment`] to the pair of `r′_j` and a random value.
 
 use crate::CommitmentRandomness;
-use crate::plonky3::commitments::{
-    Commitment, Domain, Element, PAIR_ELEMENTS, concat, pack_randomness,
-};
+use crate::hash_domains::Domain;
+use crate::plonky3::commitments::{Commitment, Element, PAIR_ELEMENTS, concat, pack_randomness};
 use p3_field::integers::QuotientMap;
 use pool_prf::params::Zp;
 

@@ -24,9 +24,9 @@
 //!
 //! (K) and (M) are the same on every row, because `sk` is the same in every run
 //! and (M) holds the `r̃_Σ` of all runs at once.
-//! 
+//!
 //! (A) is the same on the `Δ` rows of a run, because `ã_Σ` does not depend on `j`.
-//! 
+//!
 //! (R) and (P) change on every row.
 //!
 //! The public values are `pk` and `m`, `e`, `y` and `d`.
@@ -40,8 +40,10 @@
 //! - (K) and (M) use `pk` and `m`, the same on every row.
 //! - (A) uses the request `e`: on the rows of run `k`, run `k`'s `e`.
 //! - (R) uses the response: on row `Δ·k + j`, run `k`'s `y_j`.
-//! - (P) uses the pad commitments: on row `Δ·k + j`, run `k`'s `d` for
-//!   entry `j`.
+//! - (P) uses the pad commitments: on row `Δ·k + j` (run `k`),
+//!   `d_{(j - b̄′) mod Δ}` as (R) uses pad `r′_{(j - b̄′) mod Δ}` there. The
+//!   circuit gives (P) the pads and `d` in that order, see
+//!   [`in_response_order`].
 //!
 //! The selectors pick these out, see [`selectors`]: `u_k` is 1 on the rows
 //! of run `k`, and `s_j` is 1 on the rows of entry `j`.
@@ -69,7 +71,8 @@ use p3_air::utils::pack_bits_le;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
 use p3_matrix::dense::RowMajorMatrix;
 use p3_uni_stark::{SubAirBuilder, prove, verify};
-use pool_prf::params::{DELTA, N, RUNS_PER_EVALUATION};
+use pool_prf::modular::sub_delta;
+use pool_prf::params::{DELTA, N, RUNS_PER_EVALUATION, Zdelta};
 use pool_prf::prf::SecretKey;
 use std::borrow::Cow;
 
@@ -104,6 +107,12 @@ const S: usize = 0;
 const U: usize = S + DELTA;
 const NUM_PERIODIC_COLUMNS: usize = U + RUNS_PER_EVALUATION;
 
+/// `values` in the order (R) uses the pads: entry `j` is value
+/// `(j - b̄′) mod Δ`.
+fn in_response_order<T: Copy>(values: &[T; DELTA], b_bar_prime: Zdelta) -> [T; DELTA] {
+    array::from_fn(|j| values[usize::from(sub_delta(j as Zdelta, b_bar_prime))])
+}
+
 /// The rows of one run: one of (A), the `Δ` entries of (R) and of (P).
 struct RunRows {
     sum: Vec<Val>,
@@ -117,7 +126,10 @@ impl RunRows {
         Self {
             sum: SumAir::row(sk, witness.r_sigma_sum, &run.e),
             response: ResponseAir::entries(a_sigma_sum, &witness.pads, run.b_bar_prime),
-            pads: PadsAir::entries(&witness.pads, &witness.d_randomness, run.b_bar_prime),
+            pads: PadsAir::entries(
+                &in_response_order(&witness.pads, run.b_bar_prime),
+                &in_response_order(&witness.d_randomness, run.b_bar_prime),
+            ),
         }
     }
 }
@@ -270,9 +282,10 @@ fn public_values(statement: &Online) -> Vec<Val> {
     let mut values = statement.pk.0.to_vec();
     values.extend(statement.m.0);
     for run in &statement.runs {
+        let d = in_response_order(&run.d, run.b_bar_prime);
         values.extend(a_sum::public_values(&run.e));
         values.extend(r_response::public_values(&run.y));
-        values.extend(p_pads::public_values(&run.d, run.b_bar_prime));
+        values.extend(p_pads::public_values(&d));
     }
     values
 }
@@ -361,7 +374,7 @@ mod tests {
         let run = &statement.runs[k];
         let e = a_sum::public_values(&run.e);
         let y = r_response::public_values(&run.y);
-        let d = p_pads::public_values(&run.d, run.b_bar_prime);
+        let d = p_pads::public_values(&in_response_order(&run.d, run.b_bar_prime));
         holds_alone(&KeyAir, key, &statement.pk.0)
             && holds_alone(&MaskSumAir, mask_sum, &statement.m.0)
             && holds_alone(&SumAir, &rows.sum, &e)

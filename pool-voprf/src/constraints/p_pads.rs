@@ -1,6 +1,8 @@
 //! Constraint (P) from `docs/voprf.md`.
 //!
-//! Each `d_j` is a [`Commitment`] to the pair of `r′_j` and a random value.
+//! ```text
+//! d_j = Commit(Domain::Pad, r′_j, randomness_j),   j = 0 .. Δ-1
+//! ```
 
 use crate::CommitmentRandomness;
 use crate::traits::{Commitment, Constraint};
