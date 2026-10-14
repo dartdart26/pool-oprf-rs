@@ -3,7 +3,8 @@
 //! [`pack_key`] reads [`BITS_PER_ELEMENT`] bits at a time into an [`Element`],
 //! so that the key becomes the [`Element`]s the commitment takes as input.
 
-use crate::plonky3::commitments::{BITS_PER_ELEMENT, Commitment, Domain, Element};
+use crate::hash_domains::Domain;
+use crate::plonky3::commitments::{BITS_PER_ELEMENT, Commitment, Element};
 use p3_field::integers::QuotientMap;
 use pool_prf::params::N;
 use pool_prf::prf::SecretKey;

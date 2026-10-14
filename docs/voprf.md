@@ -23,7 +23,8 @@ output. A superscript `k` marks the run with
 we aim at covers one evaluation.
 
 One preprocessing can be made for more than one evaluation, i.e. a preprocessing
-serves `τ` runs and `τ / RUNS_PER_EVALUATION` evaluations.
+serves `τ` runs and `τ / RUNS_PER_EVALUATION` evaluations. A superscript `v`
+marks the evaluation in the preprocessing, as in `m^v`.
 
 We introduce `pk`, a commitment to secret key `sk`, that the server
 publishes once. If the client is convinced the server response is correct,
@@ -37,13 +38,14 @@ box even when either party cheats. [Section 6](#6-the-ot-underneath) talks
 more about the underlying OTs.
 
 We call the results expanded from the binary OT blocks **masks**, e.g.
-`r^k_{b_i, i}`, and the outputs of the 1-out-of-Δ OTs **pads**, e.g. `r′^k_j`.
+`r^k_{b_i, i}`, and the values derived from of the 1-out-of-Δ OTs **pads**,
+e.g. `r′^k_0 .. r′^k_{Δ-1}`.
 
 ## 2. High level design
 
 In the paper's protocol, the server sends only two non-OT messages:
  - `b̄` in preprocessing step 4
- - `y_0 .. y_{Δ-1}` as a response in the online phase
+ - `y^k_0 .. y^k_{Δ-1}` as a response in the online phase
 
 Since the OTs are ideal ([section 6](#6-the-ot-underneath)) and without
 verifiability, above are the server's only messages it can fake undetected,
@@ -52,15 +54,15 @@ with the OPRF output still looking random.
 To prove these non-OT messages, we add the following new messages to the
 protocol:
 
-| message                                            | description                                       | direction        | when                            |
-| -------------------------------------------------- | ------------------------------------------------- | ---------------- | ------------------------------- |
-| `pk`                                               | commitment to the server's `sk`                   | server -> client | setup                           |
-| `π_setup`                                          | proof of the setup statement                      | server -> client | setup                           |
-| `c_{0, 0} .. c_{0, n-1}`, `c_{1, 0} .. c_{1, n-1}` | commitments to the client's OT blocks             | client -> server | after preprocessing step 2      |
-| `d^k_0 .. d^k_{Δ-1}`                               | commitments to the server's pads for each run `k` | server -> client | after preprocessing step 3      |
-| `m`                                                | one commitment per evaluation to `r̃^k_Σ`          | server -> client | end of preprocessing            |
-| `π_preproc`                                        | proof of the preprocessing statement              | server -> client | end of preprocessing            |
-| `π_online`                                         | proof of the online statement                     | server -> client | with each evaluation's response |
+| message                                                    | description                                               | direction        | when                            |
+| ---------------------------------------------------------- | --------------------------------------------------------- | ---------------- | ------------------------------- |
+| `pk`                                                       | commitment to the server's `sk`                           | server -> client | setup                           |
+| `π_setup`                                                  | proof of the setup statement                              | server -> client | setup                           |
+| `c^v_{0, 0} .. c^v_{0, n-1}`, `c^v_{1, 0} .. c^v_{1, n-1}` | commitments to the client's masks for each evaluation `v` | client -> server | after preprocessing step 2      |
+| `d^k_0 .. d^k_{Δ-1}`                                       | commitments to the server's pads for each run `k`         | server -> client | after preprocessing step 3      |
+| `m^v`                                                      | commitment to all `r̃^k_Σ` of each evaluation `v`          | server -> client | end of preprocessing            |
+| `π_preproc`                                                | proof of the preprocessing statement                      | server -> client | end of preprocessing            |
+| `π_online`                                                 | proof of the online statement                             | server -> client | with each evaluation's response |
 
 ## 3. Server proofs
 
@@ -100,30 +102,32 @@ One way to look at `y^k_j` is as a sum of two parts. The rounded part comes
 from the binary OTs' masks in `r̃^k_Σ`. The other part is the pad
 `r′^k_{(j - b̄′^k) mod Δ}` from run `k`'s 1-out-of-Δ OT.
 
-Furthermore, the point of writing `ã_Σ` as above is to separate it into two
+Furthermore, the point of writing `ã^k_Σ` as above is to separate it into two
 terms - one that depends on the online request and one that only depends on
-preprocessing. This way, we can do more work in preprocessing and less
-during the online phase, making the online proof smaller and faster.
+preprocessing. This way, we can do more work in preprocessing and less during
+the online phase, making the online proof smaller and faster.
 
-Note that the server does not know `j*` and, therefore, it has to prove the
-equation for `y_j` at every `j`, not just at `j*`.
+Note that the server does not know `j*^k` and, therefore, it has to prove the
+equation for `y^k_j` at every `j`, not just at `j*^k`.
 
 A summary of symbols used:
 
-| symbol                 | domain       | in the proof | constraint |
-| ---------------------- | ------------ | ------------ | ---------- |
-| `j`                    | `ℤ_Δ`        | public       |            |
-| `b̄_i`                  | `{0, 1}`     | public       |            |
-| `e^k_i`                | `ℤ_q`        | public       |            |
-| `b̄′^k`                 | `ℤ_Δ`        | public       |            |
-| `sk_i`                 | `{0, 1}`     | witness      | (K)        |
-| `ot_block_{b_i, i}`    | `{0, 1}^128` | witness      | (S)        |
-| `r^k_{b_i, i}`         | `ℤ_q`        | witness      | (X)        |
-| `r̃^k_Σ`                | `ℤ_q`        | witness      | (T) (M)    |
-| `r′^k_0 .. r′^k_{Δ-1}` | `ℤ^Δ_p`      | witness      | (P)        |
-| `r^k_Σ`                | `ℤ_q`        | not in it    |            |
-| `j*^k`                 | `ℤ_Δ`        | not in it    |            |
-| `b′^k`                 | `ℤ_Δ`        | not in it    |            |
+| symbol                               | domain           | in the proof | constraint |
+| ------------------------------------ | ---------------- | ------------ | ---------- |
+| `j`                                  | `ℤ_Δ`            | public       |            |
+| `b̄_i`                                | `{0, 1}`         | public       |            |
+| `e^k_i`                              | `ℤ_q`            | public       |            |
+| `b̄′^k`                               | `ℤ_Δ`            | public       |            |
+| `sk_i`                               | `{0, 1}`         | witness      | (K)        |
+| `ot_block_{b_i, i}`                  | `{0, 1}^128`     | witness      | (S)        |
+| `r^k_{b_i, i}`                       | `ℤ_q`            | witness      | (S)        |
+| `r̃^k_Σ`                              | `ℤ_q`            | witness      | (T) (M)    |
+| `randomness^v`                       | `{0, 1}^128`     | witness      | (M)        |
+| `r′^k_0 .. r′^k_{Δ-1}`               | `ℤ^Δ_p`          | witness      | (P)        |
+| `ot_block′^k_0 .. ot_block′^k_{Δ-1}` | `({0, 1}^128)^Δ` | witness      | (P)        |
+| `r^k_Σ`                              | `ℤ_q`            | not in it    |            |
+| `j*^k`                               | `ℤ_Δ`            | not in it    |            |
+| `b′^k`                               | `ℤ_Δ`            | not in it    |            |
 
 ### Statements
 
@@ -133,121 +137,137 @@ constraints are in [Constraints](#constraints).
 | statement     | proof       | when the server proves it       | server messages it covers | constraints         |
 | ------------- | ----------- | ------------------------------- | ------------------------- | ------------------- |
 | setup         | `π_setup`   | at setup                        | `pk`                      | (K)                 |
-| preprocessing | `π_preproc` | at the end of preprocessing     | `b̄`, `m`                  | (K) (S) (X) (T) (M) |
-| online        | `π_online`  | with each evaluation's response | `y`, `d`                  | (K) (M) (P) (A) (R) |
+| preprocessing | `π_preproc` | at the end of preprocessing     | `b̄`, `m^v`                | (K) (S) (T) (M)     |
+| online        | `π_online`  | with each evaluation's response | `y^k`, `d^k`              | (K) (M) (P) (A) (R) |
 
 ### Proving the response
 
-`y_{j*}` is correct only if the server used the right public values, its
-secret key `sk`, its own masks, through `r̃_Σ`, and the pad `r′^k_{b′^k}` the
-client holds. The secret values each come from something the client trusts,
-through a chain of constraints. Read `->` as "pins down":
+`y^k_{j*^k}` is correct only if the server used the right public values, its
+secret key `sk`, its own masks, through `r̃^k_Σ`, and the pad `r′^k_{b′^k}`
+the client holds. The secret values each come from something the client
+trusts, through a chain of constraints. Read `->` as "pins down":
 
 ```
 key     pk -(K)-> sk
-masks   c_{0, i}, c_{1, i} -(S)-> the server's OT block -(X)-> the server's masks -(T)-> r̃_Σ -(M)-> m
-pads    d^k_0 .. d^k_{Δ-1} -(P)-> the server's pads
+masks   c^v_{0, i}, c^v_{1, i} -(S)-> all r^k_{b_i, i} for v -(T)-> all r̃^k_Σ for v -(M)-> m^v
+pads    d^k_0 .. d^k_{Δ-1} -(P)-> r′^k_0 .. r′^k_{Δ-1}
 ```
 
 **Key.** `pk` is the server's commitment to `sk`, published at setup.
 
-**Masks.** `c_{0, i}`, `c_{1, i}` (`c` for short) are the client's
-commitments to its two OT blocks of each `i`, and `m` is the server's
-commitment to `r̃_Σ`. The preprocessing proof pins down `m` all the way from
-`c`. The online proof opens the same `m` and, therefore, it uses the same
-`r̃_Σ`.
+**Masks.** `c^v_{0, i}`, `c^v_{1, i}` (`c^v` for short) are the client's
+commitments to the masks of its two OT blocks of each `i`, for evaluation
+`v`, and `m^v` is the server's commitment to all `r̃^k_Σ` of evaluation `v`.
+For evaluation `v`, (S) opens `c^v` with the server's masks of every run `k`,
+(T) sums the masks of run `k` into `r̃^k_Σ`, and (M) shows `m^v` holds all
+`r̃^k_Σ` of evaluation `v`. The preprocessing proof pins down `m^v` all the
+way from `c^v`. The online proof opens the same `m^v` and, therefore, it uses
+the same `r̃^k_Σ`.
 
 **Pads.** `d^k_0 .. d^k_{Δ-1}` are the server's commitments to its pads of
-run `k`. The client checks its own pad `r′^k_{b′^k}` against `d`. The online
-proof opens the same `d` and, therefore, the pad on `y_{j*}` is the client's.
+run `k`. The client checks its own pad `r′^k_{b′^k}` against `d^k`. The
+online proof opens the same `d^k` and, therefore, the pad on `y^k_{j*^k}` is
+the client's.
 
-With that, every value behind `y_{j*}` is pinned down such that the server
+With that, every value behind `y^k_{j*^k}` is pinned down such that the server
 can only send the honest one.
 
 ### Constraints
 
 A commitment is a hash and hides its value only if the input value is too big
 to guess. For example, `sk` is big enough at `n` bits and so is an OT block
-at 128 bits. However, a pad or `r̃_Σ` is not, as each is one number of `ℤ_p`
-or `ℤ_q`. Therefore, in such cases, we hash a random value in with the committed
-one and the constraint that opens them has the random value in the witness.
+at 128 bits. However, a mask, a pad or `r̃^k_Σ` is not, as each is one number
+of `ℤ_q` or `ℤ_p`. Therefore, in such cases, we hash a random value in with
+the committed one and the constraint that opens them has the random value in
+the witness. The random value comes from the OT blocks.
+
+We write a commitment as `Commit(domain, values, random value)`. Every kind
+of commitment or hash has its own domain, such that no two kinds hash to the
+same output.
 
 #### (K) The key
 
 ```
-sk opens pk,   each sk_i in {0, 1}
+pk = Commit(Domain::Key, sk),   each sk_i in {0, 1}
 ```
 
 `pk` is the commitment to the binary secret key `sk`. Opening `pk` pins down
 `sk` and the bit check ensures `sk` is binary.
 
-#### (S) The server's OT block
+#### (S) The server's masks
 
 ```
-ot_block_{b_i, i} opens c_{b̄_i ⊕ sk_i, i}      i = 0 .. n-1
+c^v_{b̄_i ⊕ sk_i, i} = Commit(Domain::Masks, r^0_{b_i, i} .. r^{RUNS_PER_EVALUATION-1}_{b_i, i}, ot_block_{b_i, i})      i = 0 .. n-1
 ```
 
 The binary OT of preprocessing step 2 hands out 128-bit OT blocks, not
 masks: the client gets two for each `i` (`ot_block_{0, i}` and
-`ot_block_{1, i}`) and the server one (`ot_block_{b_i, i}`). Server's
-response is right only if the server's mask comes from the correct OT block.
-The client cannot reveal its OT blocks to the server, so after step 2 it
-sends commitments to both, `c_{0, i}` and `c_{1, i}`. Opening `c_{b_i, i}`
-with the server's own `b_i` proves nothing as the server can open the
-commitment to the OT block it holds. Therefore, the proof opens
-`c_{b̄_i ⊕ sk_i, i}` instead. `b̄_i` is public, `sk_i` is pinned down by `pk`,
-and the server holds only `ot_block_{b_i, i}`. Opening it therefore shows
+`ot_block_{1, i}`) and the server one (`ot_block_{b_i, i}`). Both parties
+expand an OT block into masks, outside the proof. Server's response is right
+only if the server's masks are expanded correctly from the correct OT block.
+
+The client sends `c^v_{0, i}` and `c^v_{1, i}`: commitments to both OT blocks
+and respective masks of each `i`, for evaluation `v`. The OT block is the
+random value used when hashing.
+
+Opening `c^v_{b_i, i}` with the server's own `b_i` proves nothing as the server
+can open the commitment to the OT block it holds. Therefore, the proof opens
+`c^v_{b̄_i ⊕ sk_i, i}` instead. `b̄_i` is public, `sk_i` is pinned down by `pk`,
+and the server holds only `ot_block_{b_i, i}`. Opening it, therefore, shows
 `b̄_i ⊕ sk_i = b_i`: the `b̄_i` the server sent matches its OT choice and the
-committed key.
+correct secret key, and the server's masks are the committed ones.
 
-#### (X) The masks
-
-```
-r^k_{b_i, i} = Expand(ot_block_{b_i, i}, v·RUNS_PER_EVALUATION + k)      i = 0 .. n-1
-```
-
-Both parties expand an OT block into one mask per run. `v` is the
-evaluation's number in the preprocessing, and `v·RUNS_PER_EVALUATION + k`
-numbers run `k` among all `τ` runs. Every evaluation thereby gets different
-masks from the same OT blocks.
-
-#### (T) The mask sum `r̃_Σ`
+#### (T) The mask sum `r̃^k_Σ`
 
 ```
 r̃^k_Σ = Σ_i (1 - 2·sk_i)·r^k_{b_i, i}      mod q
 ```
 
-(T) checks that `r̃_Σ` adds the masks where `sk_i = 0` and subtracts those
-where `sk_i = 1`, as [Response equation](#response-equation)
-derives it.
+(T) checks that `r̃^k_Σ` adds the masks where `sk_i = 0` and subtracts those
+where `sk_i = 1`, as [Response equation](#response-equation) derives it.
 
-#### (M) The commitment `m`
+#### (M) The commitment `m^v`
 
 ```
-r̃^0_Σ .. r̃^{RUNS_PER_EVALUATION-1}_Σ open m
+m^v = Commit(Domain::MaskSum, r̃^0_Σ .. r̃^{RUNS_PER_EVALUATION-1}_Σ, randomness^v)
 ```
 
-`m` is the server's commitment to `r̃_Σ`, for all runs of the evaluation.
-(M) is in both the preprocessing and the online proof. Therefore, the `r̃_Σ`
-that (T) sums from the masks is the `r̃_Σ` the online proof uses in (A).
+`m^v` is the server's commitment to all `r̃^k_Σ` of evaluation `v`.
+(M) is in both the preprocessing and the online proof. Therefore, the `r̃^k_Σ`
+that (T) sums from the masks is the `r̃^k_Σ` the online proof uses in (A).
+
+The random value is `randomness^v`:
+
+```
+randomness^v = Hash(Domain::MaskSumRandomness, ot_block_{b_0, 0} .. ot_block_{b_{n-1}, n-1}, v)
+```
+
+`ot_block_{b_i, i}` is the OT block the server holds for each `i`. The client
+holds both OT blocks of each `i`, but does not know which one the server
+holds. One server block is therefore one of two guesses, but all `n` server
+blocks together are as hard to guess as `sk`. `v` makes the random value
+different for each evaluation.
 
 #### (P) The pads
 
 ```
-r′^k_0 .. r′^k_{Δ-1} open d^k_0 .. d^k_{Δ-1}
+d^k_0     = Commit(Domain::Pad, r′^k_0, ot_block′^k_0)
+..
+d^k_{Δ-1} = Commit(Domain::Pad, r′^k_{Δ-1}, ot_block′^k_{Δ-1})
 ```
 
 The server does not know which pad the client holds, so the server commits
-to all Δ ones and the proof opens them all.
+to all Δ ones and the proof opens them all. The random values
+`ot_block′^k_0 .. ot_block′^k_{Δ-1}` are the 1-out-of-Δ OT blocks the pads
+come from.
 
-#### (A) The sum `ã_Σ`
+#### (A) The sum `ã^k_Σ`
 
 ```
 ã^k_Σ = Σ_i sk_i·e^k_i + r̃^k_Σ      mod q
 ```
 
-(A) checks that `ã_Σ` is computed correctly as in [Response
-equation](#response-equation).
+(A) checks that `ã^k_Σ` is computed correctly as in [Response equation](#response-equation).
 
 #### (R) The response
 
@@ -255,7 +275,7 @@ equation](#response-equation).
 y^k_j = ⌈(ã^k_Σ - j) mod q⌋ + r′^k_{(j - b̄′^k) mod Δ}      mod p,   j = 0 .. Δ-1
 ```
 
-(R) checks that every `y_j` is computed correctly. It checks the arithmetic
+(R) checks that every `y^k_j` is computed correctly. It checks the arithmetic
 only - the constraints before it pin the values down.
 
 ## 4. Why zero-knowledge
@@ -266,10 +286,11 @@ Every part of the witness gives away the key:
 - `ot_block_{b_i, i}`, and the masks expanded from it: the client holds both
   OT blocks, so seeing which one the server has gives it `b_i`, and
   `sk_i = b̄_i ⊕ b_i`.
-- `r̃_Σ`: the client holds every `r_{0, i}` and `r_{1, i}`, so `r̃_Σ` is one
-  linear equation mod `q` in the bits of `sk`. Every run adds one, and
-  about `n` of them solve for `sk`.
-- `r′_0 .. r′_{Δ-1}`: the client holds `r′_{b′}` only, and having the
+- `r̃^k_Σ`: the client holds every `r^k_{0, i}` and `r^k_{1, i}`, so
+  `r̃^k_Σ` is one linear equation mod `q` in the bits of `sk`. Every run
+  adds one, and about `n` of them solve for `sk`.
+- `r′^k_0 .. r′^k_{Δ-1}` and `ot_block′^k_0 .. ot_block′^k_{Δ-1}`: the
+  client holds `r′^k_{b′^k}` and `ot_block′^k_{b′^k}` only, and having the
   other Δ - 1 pads exposes `sk`.
 
 Therefore, the proofs must be zero-knowledge.

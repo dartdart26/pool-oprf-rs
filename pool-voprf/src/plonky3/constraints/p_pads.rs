@@ -1,13 +1,8 @@
-//! Constraint (P) on Plonky3: `r′_0 .. r′_{Δ-1}` open `d_0 .. d_{Δ-1}`.
-//!
-//! The pads are kept in the order of (R):
+//! Constraint (P) on Plonky3:
 //!
 //! ```text
-//! pad_j = r′_{(j - b̄′) mod Δ}
+//! d_j = Commit(Domain::Pad, r′_j, randomness_j),   j = 0 .. Δ-1
 //! ```
-//!
-//! Entry `j` opens `d_{(j - b̄′) mod Δ}`. `b̄′` is public, so the verifier
-//! puts `d` in the same order.
 //!
 //! # Layout
 //!
@@ -58,8 +53,7 @@ use core::array;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
 use p3_field::integers::QuotientMap;
 use p3_matrix::dense::RowMajorMatrix;
-use pool_prf::modular::sub_delta;
-use pool_prf::params::{DELTA, Zdelta, Zp};
+use pool_prf::params::{DELTA, Zp};
 use std::borrow::Cow;
 
 const PERMUTATIONS: usize = permutations(INPUT_ELEMENTS);
@@ -76,25 +70,13 @@ const NUM_PERIODIC_COLUMNS: usize = DELTA;
 
 const _: () = assert!(ROWS.is_multiple_of(DELTA), "the entries must repeat whole");
 
-/// `(j - b̄′) mod Δ`
-fn pad_index(j: usize, b_bar_prime: Zdelta) -> usize {
-    usize::from(sub_delta(j as Zdelta, b_bar_prime))
-}
-
 pub struct PadsAir;
 
 impl PadsAir {
     /// The `Δ` entries, one row each: entry `j` on row `j`.
-    pub fn entries(
-        pads: &[Zp; DELTA],
-        randomness: &[CommitmentRandomness; DELTA],
-        b_bar_prime: Zdelta,
-    ) -> Vec<Val> {
+    pub fn entries(pads: &[Zp; DELTA], randomness: &[CommitmentRandomness; DELTA]) -> Vec<Val> {
         let mut rows = Vec::new();
-        for j in 0..DELTA {
-            let pad_index = pad_index(j, b_bar_prime);
-            let pad = pads[pad_index];
-            let randomness = randomness[pad_index];
+        for (&pad, &randomness) in pads.iter().zip(randomness) {
             rows.push(Val::from_int(pad));
             rows.extend(pack_randomness(randomness));
             let input = PadCommitment::input(elements(pad, randomness));
@@ -107,9 +89,8 @@ impl PadsAir {
     pub fn trace(
         pads: &[Zp; DELTA],
         randomness: &[CommitmentRandomness; DELTA],
-        b_bar_prime: Zdelta,
     ) -> RowMajorMatrix<Val> {
-        let entries = Self::entries(pads, randomness, b_bar_prime);
+        let entries = Self::entries(pads, randomness);
         RowMajorMatrix::new(entries.repeat(ROWS / DELTA), NUM_COLS)
     }
 
@@ -154,9 +135,7 @@ impl BaseAir<Val> for PadsAir {
 }
 
 impl<AB: AirBuilder<F = Val>> Air<AB> for PadsAir {
-    // Checks that the commitment to `pad_j` in the table equals public value
-    // `j`, which is `d_{(j - b̄′) mod Δ}`: the verifier puts `d` in the order
-    // of (R), see `public_values`.
+    // Checks that the commitment to `pad_j` in the table equals public value `d_j`.
     fn eval(&self, builder: &mut AB) {
         let public_values = builder.public_values();
         let d: [[AB::PublicVar; DIGEST_ELEMENTS]; DELTA] = array::from_fn(|j| {
@@ -181,11 +160,9 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for PadsAir {
     }
 }
 
-/// `d` in the order of (R).
-pub fn public_values(d: &[PadCommitment; DELTA], b_bar_prime: Zdelta) -> Vec<Val> {
-    (0..DELTA)
-        .flat_map(|j| d[pad_index(j, b_bar_prime)].0)
-        .collect()
+/// `d_0 .. d_{Δ-1}`.
+pub fn public_values(d: &[PadCommitment; DELTA]) -> Vec<Val> {
+    d.iter().flat_map(|d_j| d_j.0).collect()
 }
 
 #[cfg(test)]
@@ -193,17 +170,12 @@ mod tests {
     use super::*;
     use crate::plonky3::commitments::pad::commit;
     use p3_air::{ConstraintReport, check_all_constraints};
-    use pool_prf::modular::reduce_delta;
     use rand::rngs::StdRng;
     use rand::{RngExt, SeedableRng};
 
-    fn random(seed: u64) -> ([Zp; DELTA], [CommitmentRandomness; DELTA], Zdelta) {
+    fn random(seed: u64) -> ([Zp; DELTA], [CommitmentRandomness; DELTA]) {
         let mut rng = StdRng::seed_from_u64(seed);
-        (
-            rng.random(),
-            rng.random(),
-            rng.random_range(0..DELTA as Zdelta),
-        )
+        (rng.random(), rng.random())
     }
 
     fn commitments(
@@ -212,42 +184,26 @@ mod tests {
     ) -> [PadCommitment; DELTA] {
         array::from_fn(|j| commit(pads[j], randomness[j]))
     }
-    fn report(
-        trace: &RowMajorMatrix<Val>,
-        d: &[PadCommitment; DELTA],
-        b_bar_prime: Zdelta,
-    ) -> ConstraintReport {
-        check_all_constraints(&PadsAir, trace, &public_values(d, b_bar_prime), None)
+    fn report(trace: &RowMajorMatrix<Val>, d: &[PadCommitment; DELTA]) -> ConstraintReport {
+        check_all_constraints(&PadsAir, trace, &public_values(d), None)
     }
 
     #[test]
     fn the_rules_hold() {
-        let (pads, randomness, b_bar_prime) = random(2);
-        let trace = PadsAir::trace(&pads, &randomness, b_bar_prime);
+        let (pads, randomness) = random(2);
+        let trace = PadsAir::trace(&pads, &randomness);
         let d = commitments(&pads, &randomness);
-        assert!(report(&trace, &d, b_bar_prime).is_ok());
+        assert!(report(&trace, &d).is_ok());
     }
 
     #[test]
     fn every_entry_is_checked() {
-        let (pads, randomness, b_bar_prime) = random(3);
-        let trace = PadsAir::trace(&pads, &randomness, b_bar_prime);
+        let (pads, randomness) = random(3);
+        let trace = PadsAir::trace(&pads, &randomness);
         for j in 0..DELTA {
             let mut d = commitments(&pads, &randomness);
             d[j] = commit(pads[j], randomness[j] ^ 1);
-            assert!(
-                !report(&trace, &d, b_bar_prime).is_ok(),
-                "entry {j} is not checked"
-            );
+            assert!(!report(&trace, &d).is_ok(), "entry {j} is not checked");
         }
-    }
-
-    #[test]
-    fn another_b_bar_prime_is_refused() {
-        let (pads, randomness, b_bar_prime) = random(4);
-        let trace = PadsAir::trace(&pads, &randomness, b_bar_prime);
-        let d = commitments(&pads, &randomness);
-        let other = reduce_delta(b_bar_prime + 1);
-        assert!(!report(&trace, &d, other).is_ok());
     }
 }
