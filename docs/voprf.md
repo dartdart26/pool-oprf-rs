@@ -10,6 +10,8 @@
 - [4. Why zero-knowledge](#4-why-zero-knowledge)
 - [5. Proof system](#5-proof-system)
 - [6. The OT underneath](#6-the-ot-underneath)
+- [7. Known issues](#7-known-issues)
+- [References](#references)
 
 ## 1. Introduction
 
@@ -38,7 +40,7 @@ box even when either party cheats. [Section 6](#6-the-ot-underneath) talks
 more about the underlying OTs.
 
 We call the results expanded from the binary OT blocks **masks**, e.g.
-`r^k_{b_i, i}`, and the values derived from of the 1-out-of-Δ OTs **pads**,
+`r^k_{b_i, i}`, and the values derived from the 1-out-of-Δ OTs **pads**,
 e.g. `r′^k_0 .. r′^k_{Δ-1}`.
 
 ## 2. High level design
@@ -322,7 +324,19 @@ Without malicious OT there is no OPRF, verifiable or not - a server that
 cheats the OT learns the client's input and a client that cheats learns
 the key.
 
-**References.**
+## 7. Known issues
+
+**Selective failure.** The client checks only `d^k_{b′^k}` against the pad
+it itself holds. A server that commits wrong pads at some positions is
+caught only when `b′^k` is one of them. When the client goes on, the server
+learns that `b′^k` is none of them, and with that a hint about the client's
+input.
+
+The client stops at the first bad `d^k_{b′^k}`.
+
+**TODO:** how many bits can leak.
+
+## References
 
 - [Pool] A. Davidson, A. Deo, L. Tremblay Thibault. Pool: A Practical OT-based
   OPRF from Learning with Rounding. CCS 2025.
