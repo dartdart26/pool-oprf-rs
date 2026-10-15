@@ -1,7 +1,7 @@
 //! `m` is a [`MaskSumCommitment`] to the `r̃_Σ` of every run of an
 //! evaluation and a random value.
 
-use crate::CommitmentRandomness;
+use crate::commitments::{CommitmentRandomness, MaskSumsInput};
 use crate::hash_domains::Domain;
 use crate::plonky3::commitments::{
     Commitment, Element, RANDOMNESS_ELEMENTS, concat, pack_randomness,
@@ -35,12 +35,10 @@ pub fn commit(
 }
 
 impl crate::traits::Commitment for MaskSumCommitment {
-    type Value = ([Zq; RUNS_PER_EVALUATION], CommitmentRandomness);
+    type Input = MaskSumsInput;
 
-    fn commit(
-        (r_sigma_sum, randomness): &([Zq; RUNS_PER_EVALUATION], CommitmentRandomness),
-    ) -> Self {
-        commit(r_sigma_sum, *randomness)
+    fn commit(input: &MaskSumsInput) -> Self {
+        commit(&input.r_sigma_sums, input.randomness)
     }
 }
 

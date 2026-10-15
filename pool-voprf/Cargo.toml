@@ -23,6 +23,7 @@ plonky3 = [
     "dep:p3-symmetric",
     "dep:p3-uni-stark",
 ]
+testing = ["dep:rand"]
 # Multithreaded proving for the plonky3 backend.
 parallel = ["plonky3", "p3-maybe-rayon/parallel"]
 
@@ -49,6 +50,7 @@ p3-symmetric = { workspace = true, optional = true }
 p3-uni-stark = { workspace = true, optional = true }
 
 [dev-dependencies]
+pool-voprf = { path = ".", features = ["testing"] }
 bincode = { workspace = true }
 rand = { workspace = true }
 

@@ -1,20 +1,19 @@
 #![cfg(feature = "plonky3")]
 
-use core::array;
 use pool_prf::modular::reduce_delta;
-use pool_prf::params::{DELTA, N, Q, RUNS_PER_EVALUATION, Zdelta};
-use pool_prf::prf::SecretKey;
+use pool_prf::params::{DELTA, N, Q, RUNS_PER_EVALUATION};
 use pool_voprf::plonky3::commitments::key::KeyCommitment;
 use pool_voprf::plonky3::commitments::mask_sum::MaskSumCommitment;
 use pool_voprf::plonky3::commitments::pad::PadCommitment;
 use pool_voprf::plonky3::{Plonky3, ProveError, VerifyError};
-use pool_voprf::statements::online::{OnlineStatement, OnlineWitness, RunWitness};
+use pool_voprf::statements::online::{OnlineStatement, OnlineWitness};
+use pool_voprf::testing;
 use pool_voprf::traits::ProofSystem;
+use rand::SeedableRng;
 use rand::rngs::StdRng;
-use rand::{RngExt, SeedableRng};
 use std::time::Instant;
 
-type Online = OnlineStatement<KeyCommitment, MaskSumCommitment, PadCommitment>;
+type Statement = OnlineStatement<KeyCommitment, MaskSumCommitment, PadCommitment>;
 
 const LAST_RUN: usize = RUNS_PER_EVALUATION - 1;
 
@@ -27,23 +26,8 @@ fn verifier() -> Plonky3 {
 }
 
 /// A random witness and the honest statement for it, from `seed`.
-fn random(seed: u64) -> (Online, OnlineWitness) {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let witness = OnlineWitness {
-        sk: SecretKey::random(&mut rng),
-        m_randomness: rng.random(),
-        runs: array::from_fn(|_| RunWitness {
-            r_sigma_sum: rng.random_range(0..Q),
-            pads: rng.random(),
-            d_randomness: rng.random(),
-        }),
-    };
-    let e = array::from_fn(|_| array::from_fn(|_| rng.random_range(0..Q)));
-    let b_bar_prime = array::from_fn(|_| rng.random_range(0..DELTA as Zdelta));
-    (
-        OnlineStatement::for_witness(&witness, &e, &b_bar_prime),
-        witness,
-    )
+fn random(seed: u64) -> (Statement, OnlineWitness) {
+    testing::random_online(seed)
 }
 
 #[test]

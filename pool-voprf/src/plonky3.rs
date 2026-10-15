@@ -102,6 +102,8 @@ pub enum VerifyError {
     /// malformed proof.
     #[error("the proof is malformed")]
     Malformed,
+    #[error("the statement has no evaluation")]
+    NoEvaluation,
 }
 
 pub struct Plonky3 {

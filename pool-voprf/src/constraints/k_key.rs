@@ -14,7 +14,7 @@ pub struct Key<'a, PK> {
     pub sk: &'a SecretKey,
 }
 
-impl<PK: Commitment<Value = SecretKey>> Constraint for Key<'_, PK> {
+impl<PK: Commitment<Input = SecretKey>> Constraint for Key<'_, PK> {
     fn holds(&self) -> bool {
         PK::commit(self.sk) == *self.pk
     }

@@ -42,7 +42,7 @@ pub fn commit(sk: &SecretKey) -> KeyCommitment {
 }
 
 impl crate::traits::Commitment for KeyCommitment {
-    type Value = SecretKey;
+    type Input = SecretKey;
 
     fn commit(sk: &SecretKey) -> Self {
         commit(sk)

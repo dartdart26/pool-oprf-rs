@@ -312,11 +312,12 @@ impl ProofSystem<Online> for Plonky3 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::random_online;
     use p3_air::{ConstraintReport, DebugConstraintBuilder, check_all_constraints};
     use pool_prf::modular::reduce_q;
-    use pool_prf::params::{Q, Zdelta, ZqAccum};
+    use pool_prf::params::ZqAccum;
+    use rand::SeedableRng;
     use rand::rngs::StdRng;
-    use rand::{RngExt, SeedableRng};
 
     /// The run the tests change: the last, so that a circuit that checks
     /// the first run only is caught.
@@ -324,22 +325,7 @@ mod tests {
 
     /// A random witness and the honest statement for it, from `seed`.
     fn random(seed: u64) -> (Online, OnlineWitness) {
-        let mut rng = StdRng::seed_from_u64(seed);
-        let witness = OnlineWitness {
-            sk: SecretKey::random(&mut rng),
-            m_randomness: rng.random(),
-            runs: array::from_fn(|_| RunWitness {
-                r_sigma_sum: rng.random_range(0..Q),
-                pads: rng.random(),
-                d_randomness: rng.random(),
-            }),
-        };
-        let e = array::from_fn(|_| array::from_fn(|_| rng.random_range(0..Q)));
-        let b_bar_prime = array::from_fn(|_| rng.random_range(0..DELTA as Zdelta));
-        (
-            OnlineStatement::for_witness(&witness, &e, &b_bar_prime),
-            witness,
-        )
+        random_online(seed)
     }
 
     /// Runs the rules over `trace` for `statement`.
