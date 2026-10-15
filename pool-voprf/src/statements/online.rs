@@ -8,7 +8,7 @@
 //! run at once, so (M) is in the statement once too. (P), (A) and (R) are per
 //! run.
 
-use crate::CommitmentRandomness;
+use crate::commitments::{CommitmentRandomness, MaskSumsInput, PadInput};
 use crate::constraints::a_sum::Sum;
 use crate::constraints::k_key::Key;
 use crate::constraints::m_mask_sum::MaskSum;
@@ -63,35 +63,38 @@ impl OnlineWitness {
 
 impl<PK, M, D> OnlineStatement<PK, M, D>
 where
-    PK: Commitment<Value = SecretKey>,
-    M: Commitment<Value = ([Zq; RUNS_PER_EVALUATION], CommitmentRandomness)>,
-    D: Commitment<Value = (Zp, CommitmentRandomness)>,
+    PK: Commitment<Input = SecretKey>,
+    M: Commitment<Input = MaskSumsInput>,
+    D: Commitment<Input = PadInput>,
 {
-    pub fn for_witness(
+    pub fn honest(
         witness: &OnlineWitness,
         e: &[[Zq; N]; RUNS_PER_EVALUATION],
         b_bar_prime: &[Zdelta; RUNS_PER_EVALUATION],
     ) -> Self {
         Self {
             pk: PK::commit(&witness.sk),
-            m: M::commit(&(witness.r_sigma_sums(), witness.m_randomness)),
+            m: M::commit(&MaskSumsInput {
+                r_sigma_sums: witness.r_sigma_sums(),
+                randomness: witness.m_randomness,
+            }),
             runs: array::from_fn(|k| {
-                RunStatement::for_witness(&witness.sk, &witness.runs[k], e[k], b_bar_prime[k])
+                RunStatement::honest(&witness.sk, &witness.runs[k], e[k], b_bar_prime[k])
             }),
         }
     }
 }
 
-impl<D: Commitment<Value = (Zp, CommitmentRandomness)>> RunStatement<D> {
-    pub fn for_witness(
-        sk: &SecretKey,
-        witness: &RunWitness,
-        e: [Zq; N],
-        b_bar_prime: Zdelta,
-    ) -> Self {
+impl<D: Commitment<Input = PadInput>> RunStatement<D> {
+    pub fn honest(sk: &SecretKey, witness: &RunWitness, e: [Zq; N], b_bar_prime: Zdelta) -> Self {
         let a_sigma_sum = pool_eval::a_sigma_sum(sk, witness.r_sigma_sum, &e);
         Self {
-            d: array::from_fn(|j| D::commit(&(witness.pads[j], witness.d_randomness[j]))),
+            d: array::from_fn(|j| {
+                D::commit(&PadInput {
+                    pad: witness.pads[j],
+                    randomness: witness.d_randomness[j],
+                })
+            }),
             y: pool_eval::respond(a_sigma_sum, &witness.pads, b_bar_prime),
             e,
             b_bar_prime,
@@ -121,9 +124,9 @@ impl<D: Commitment<Value = (Zp, CommitmentRandomness)>> RunStatement<D> {
 
 impl<PK, M, D> Statement for OnlineStatement<PK, M, D>
 where
-    PK: Commitment<Value = SecretKey>,
-    M: Commitment<Value = ([Zq; RUNS_PER_EVALUATION], CommitmentRandomness)>,
-    D: Commitment<Value = (Zp, CommitmentRandomness)>,
+    PK: Commitment<Input = SecretKey>,
+    M: Commitment<Input = MaskSumsInput>,
+    D: Commitment<Input = PadInput>,
 {
     type Witness = OnlineWitness;
 

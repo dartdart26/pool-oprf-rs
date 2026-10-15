@@ -4,7 +4,7 @@
 //! d_j = Commit(Domain::Pad, r′_j, randomness_j),   j = 0 .. Δ-1
 //! ```
 
-use crate::CommitmentRandomness;
+use crate::commitments::{CommitmentRandomness, PadInput};
 use crate::traits::{Commitment, Constraint};
 use pool_prf::params::{DELTA, Zp};
 
@@ -17,8 +17,14 @@ pub struct Pads<'a, D> {
     pub randomness: &'a [CommitmentRandomness; DELTA],
 }
 
-impl<D: Commitment<Value = (Zp, CommitmentRandomness)>> Constraint for Pads<'_, D> {
+impl<D: Commitment<Input = PadInput>> Constraint for Pads<'_, D> {
     fn holds(&self) -> bool {
-        (0..DELTA).all(|j| D::commit(&(self.pads[j], self.randomness[j])) == self.d[j])
+        (0..DELTA).all(|j| {
+            let input = PadInput {
+                pad: self.pads[j],
+                randomness: self.randomness[j],
+            };
+            D::commit(&input) == self.d[j]
+        })
     }
 }

@@ -150,9 +150,11 @@ the client holds. The secret values each come from something the client
 trusts, through a chain of constraints. Read `->` as "pins down":
 
 ```
-key     pk -(K)-> sk
-masks   c^v_{0, i}, c^v_{1, i} -(S)-> all r^k_{b_i, i} for v -(T)-> all r̃^k_Σ for v -(M)-> m^v
-pads    d^k_0 .. d^k_{Δ-1} -(P)-> r′^k_0 .. r′^k_{Δ-1}
+key       pk -(K)-> sk
+masks     c^v_{0, i}, c^v_{1, i} -(S)-> all r^k_{b_i, i} for v -(T)-> all r̃^k_Σ for v -(M)-> m^v
+pads      d^k_0 .. d^k_{Δ-1} -(P)-> r′^k_0 .. r′^k_{Δ-1}
+sum       sk, masks -(A)-> ã^k_Σ
+response  ã^k_Σ, pads -(R)-> y^k_0 .. y^k_{Δ-1}
 ```
 
 **Key.** `pk` is the server's commitment to `sk`, published at setup.
@@ -170,6 +172,9 @@ the same `r̃^k_Σ`.
 run `k`. The client checks its own pad `r′^k_{b′^k}` against `d^k`. The
 online proof opens the same `d^k` and, therefore, the pad on `y^k_{j*^k}` is
 the client's.
+
+**Response.** (A) sums `sk` and `r̃^k_Σ` with the request `e^k` into
+`ã^k_Σ`. (R) computes `y^k` from `ã^k_Σ` and the pads.
 
 With that, every value behind `y^k_{j*^k}` is pinned down such that the server
 can only send the honest one.
@@ -241,14 +246,13 @@ that (T) sums from the masks is the `r̃^k_Σ` the online proof uses in (A).
 The random value is `randomness^v`:
 
 ```
-randomness^v = Hash(Domain::MaskSumRandomness, ot_block_{b_0, 0} .. ot_block_{b_{n-1}, n-1}, v)
+randomness^v = Hash(Domain::MaskSumRandomness, ot_block′^0_0 .. ot_block′^0_{Δ-1})
 ```
 
-`ot_block_{b_i, i}` is the OT block the server holds for each `i`. The client
-holds both OT blocks of each `i`, but does not know which one the server
-holds. One server block is therefore one of two guesses, but all `n` server
-blocks together are as hard to guess as `sk`. `v` makes the random value
-different for each evaluation.
+`ot_block′^0_0 .. ot_block′^0_{Δ-1}` are the 1-out-of-Δ OT blocks of run 0 for evaluation `v`.
+The server holds all Δ of them, but the client holds only `ot_block′^0_{b′^0}` and lacks the other
+Δ - 1 blocks. The Δ - 1 blocks it lacks from run 0 are enough randomness for evaluation `v` as
+each block is 128 bits.
 
 #### (P) The pads
 

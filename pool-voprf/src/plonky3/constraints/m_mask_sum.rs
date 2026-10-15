@@ -27,7 +27,7 @@
 //! in the preprocessing proof. Online, (M) opens the same `m`, so each
 //! `r̃_Σ` is the value (T) checked.
 
-use crate::CommitmentRandomness;
+use crate::commitments::CommitmentRandomness;
 use crate::plonky3::commitments::mask_sum::{INPUT_ELEMENTS, MaskSumCommitment, elements};
 use crate::plonky3::commitments::{DIGEST_ELEMENTS, RANDOMNESS_ELEMENTS, concat, pack_randomness};
 use crate::plonky3::sponge::{

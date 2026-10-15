@@ -7,9 +7,10 @@
 
 pub mod key;
 pub mod mask_sum;
+pub mod masks;
 pub mod pad;
 
-use crate::CommitmentRandomness;
+use crate::commitments::CommitmentRandomness;
 use core::{array, iter};
 use p3_baby_bear::{BabyBear, Poseidon2BabyBear, default_babybear_poseidon2_32};
 use p3_field::PrimeField32;

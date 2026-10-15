@@ -12,13 +12,13 @@ pub struct SetupStatement<PK> {
     pub pk: PK,
 }
 
-impl<PK: Commitment<Value = SecretKey>> SetupStatement<PK> {
+impl<PK: Commitment<Input = SecretKey>> SetupStatement<PK> {
     pub fn for_key(sk: &SecretKey) -> Self {
         Self { pk: PK::commit(sk) }
     }
 }
 
-impl<PK: Commitment<Value = SecretKey>> Statement for SetupStatement<PK> {
+impl<PK: Commitment<Input = SecretKey>> Statement for SetupStatement<PK> {
     type Witness = SecretKey;
 
     fn holds_for(&self, sk: &SecretKey) -> bool {
