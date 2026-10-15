@@ -1,5 +1,6 @@
 //! Verifiable Pool OPRF: server proofs as described in `docs/voprf.md`.
 
+pub mod commitments;
 pub mod constraints;
 pub mod hash_domains;
 pub mod statements;
@@ -8,5 +9,5 @@ pub mod traits;
 #[cfg(feature = "plonky3")]
 pub mod plonky3;
 
-/// What a commitment hashes in with its value to hide it.
-pub type CommitmentRandomness = u128;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;

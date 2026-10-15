@@ -1,6 +1,6 @@
 //! `d_j` is a [`PadCommitment`] to the pair of `r′_j` and a random value.
 
-use crate::CommitmentRandomness;
+use crate::commitments::{CommitmentRandomness, PadInput};
 use crate::hash_domains::Domain;
 use crate::plonky3::commitments::{Commitment, Element, PAIR_ELEMENTS, concat, pack_randomness};
 use p3_field::integers::QuotientMap;
@@ -21,10 +21,10 @@ pub fn commit(pad: Zp, randomness: CommitmentRandomness) -> PadCommitment {
 }
 
 impl crate::traits::Commitment for PadCommitment {
-    type Value = (Zp, CommitmentRandomness);
+    type Input = PadInput;
 
-    fn commit(&(pad, randomness): &(Zp, CommitmentRandomness)) -> Self {
-        commit(pad, randomness)
+    fn commit(input: &PadInput) -> Self {
+        commit(input.pad, input.randomness)
     }
 }
 

@@ -41,7 +41,7 @@
 //! `pad_j`, so a bad one only harms the server. `pad_j` is whatever `d`
 //! commits to, and the client checks `d_{b′}` against its own pad.
 
-use crate::CommitmentRandomness;
+use crate::commitments::CommitmentRandomness;
 use crate::plonky3::commitments::pad::{INPUT_ELEMENTS, PadCommitment, elements};
 use crate::plonky3::commitments::{DIGEST_ELEMENTS, RANDOMNESS_ELEMENTS, concat, pack_randomness};
 use crate::plonky3::selectors::{select, selectors};

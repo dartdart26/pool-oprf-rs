@@ -1520,6 +1520,7 @@ dependencies = [
  "p3-uni-stark",
  "pool-eval",
  "pool-prf",
+ "pool-voprf",
  "rand",
  "serde",
  "thiserror",

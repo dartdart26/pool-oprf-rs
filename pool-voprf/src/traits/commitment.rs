@@ -2,7 +2,7 @@
 
 pub trait Commitment: PartialEq {
     /// What it commits to.
-    type Value;
+    type Input;
 
-    fn commit(value: &Self::Value) -> Self;
+    fn commit(input: &Self::Input) -> Self;
 }

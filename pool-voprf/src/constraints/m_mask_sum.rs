@@ -4,7 +4,7 @@
 //! m = Commit(Domain::MaskSum, r̃^0_Σ .. r̃^{RUNS_PER_EVALUATION-1}_Σ, randomness)
 //! ```
 
-use crate::CommitmentRandomness;
+use crate::commitments::{CommitmentRandomness, MaskSumsInput};
 use crate::traits::{Commitment, Constraint};
 use pool_prf::params::{RUNS_PER_EVALUATION, Zq};
 
@@ -16,10 +16,12 @@ pub struct MaskSum<'a, M> {
     pub randomness: CommitmentRandomness,
 }
 
-impl<M: Commitment<Value = ([Zq; RUNS_PER_EVALUATION], CommitmentRandomness)>> Constraint
-    for MaskSum<'_, M>
-{
+impl<M: Commitment<Input = MaskSumsInput>> Constraint for MaskSum<'_, M> {
     fn holds(&self) -> bool {
-        M::commit(&(*self.r_sigma_sum, self.randomness)) == *self.m
+        let input = MaskSumsInput {
+            r_sigma_sums: *self.r_sigma_sum,
+            randomness: self.randomness,
+        };
+        M::commit(&input) == *self.m
     }
 }
