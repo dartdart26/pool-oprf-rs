@@ -4,21 +4,21 @@
 //! m = Commit(Domain::MaskSum, r̃^0_Σ .. r̃^{RUNS_PER_EVALUATION-1}_Σ, randomness)
 //! ```
 //!
-//! # Layout
+//! One row holds all of (M) and every row is the same. Domain, values and
+//! rest are Poseidon2's input.
 //!
-//! One row holds all of (M). Its columns, in order:
+//! | row      | sums (`RUNS_PER_EVALUATION`) | random (`RANDOMNESS_ELEMENTS`) | domain (1)        | values (`VALUE_ELEMENTS`) | rest  | rounds     |
+//! |----------|------------------------------|--------------------------------|-------------------|---------------------------|-------|------------|
+//! | `0`      | `r̃_Σ` of each run            | `randomness`                   | `Domain::MaskSum` | mask sums, random value   | zeros | end in `m` |
+//! | `1`      | `r̃_Σ` of each run            | `randomness`                   | `Domain::MaskSum` | mask sums, random value   | zeros | end in `m` |
+//! | …        | …                            | …                              | …                 | …                         | …     | …          |
+//! | `ROWS-1` | `r̃_Σ` of each run            | `randomness`                   | `Domain::MaskSum` | mask sums, random value   | zeros | end in `m` |
 //!
-//! | columns               | content                             |
-//! |-----------------------|-------------------------------------|
-//! | `RUNS_PER_EVALUATION` | `r̃_Σ` of each run, one column each  |
-//! | `RANDOMNESS_ELEMENTS` | the random value                    |
-//! | the rest              | Poseidon2's columns                 |
+//! Plonky3 checks Poseidon2's rounds itself. We add these rules for (M):
 //!
-//! # 1. The hash
-//!
-//! Poseidon2 takes the domain, then the `r̃_Σ` and the random value in the
-//! order of the row, one per slot, and zeros in the rest of its `WIDTH`
-//! slots.
+//! - the inputs are `Domain::MaskSum`, the mask sums, the random value, then
+//!   zeros
+//! - the rounds end in `m`
 //!
 //! No rule checks the random value. It is there to hide the `r̃_Σ`, so a
 //! bad one only harms the server.

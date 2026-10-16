@@ -3,21 +3,21 @@
 //!
 //! # Layout
 //!
-//! Each evaluation `v` gets `EVALUATION_ROWS` consecutive rows. Row
-//! `v·EVALUATION_ROWS + i` is for binary OT block `i` in evaluation `v`,
-//! `i = 0 .. n-1`. The rows after block `n-1`, up to `EVALUATION_ROWS`,
+//! Each evaluation `v` gets `N_TABLE_ROWS` consecutive rows. Row
+//! `v·N_TABLE_ROWS + i` is for binary OT block `i` in evaluation `v`,
+//! `i = 0 .. n-1`. The rows after block `n-1`, up to `N_TABLE_ROWS`,
 //! repeat the row of block `n-1`.
 //!
-//! | row                     | (K)          | (M)           |
-//! |-------------------------|--------------|---------------|
-//! | `0`                     | (K) for `sk` | (M) for `m^0` |
-//! | `1`                     | (K) for `sk` | (M) for `m^0` |
-//! | …                       | …            | …             |
-//! | `EVALUATION_ROWS-1`     | (K) for `sk` | (M) for `m^0` |
-//! | `EVALUATION_ROWS`       | (K) for `sk` | (M) for `m^1` |
-//! | …                       | …            | …             |
-//! | `v·EVALUATION_ROWS + i` | (K) for `sk` | (M) for `m^v` |
-//! | …                       | …            | …             |
+//! | row                  | (K)          | (M)           |
+//! |----------------------|--------------|---------------|
+//! | `0`                  | (K) for `sk` | (M) for `m^0` |
+//! | `1`                  | (K) for `sk` | (M) for `m^0` |
+//! | …                    | …            | …             |
+//! | `N_TABLE_ROWS-1`     | (K) for `sk` | (M) for `m^0` |
+//! | `N_TABLE_ROWS`       | (K) for `sk` | (M) for `m^1` |
+//! | …                    | …            | …             |
+//! | `v·N_TABLE_ROWS + i` | (K) for `sk` | (M) for `m^v` |
+//! | …                    | …            | …             |
 //!
 //! (K) is the same on every row. (M) is the same on the rows of an
 //! evaluation.
@@ -33,7 +33,9 @@ use crate::plonky3::commitments::key::KeyCommitment;
 use crate::plonky3::commitments::mask_sum::MaskSumCommitment;
 use crate::plonky3::commitments::masks::MasksCommitment;
 use crate::plonky3::constraints::k_key;
-use crate::plonky3::{KeyAir, MaskSumAir, Plonky3, Proof, ProveError, Val, VerifyError};
+use crate::plonky3::{
+    KeyAir, MaskSumAir, N_TABLE_ROWS, Plonky3, Proof, ProveError, Val, VerifyError,
+};
 use crate::statements::preprocessing::{PreprocessingStatement, PreprocessingWitness};
 use crate::traits::{ProofSystem, Statement};
 use core::array;
@@ -41,12 +43,9 @@ use core::ops::Range;
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_matrix::dense::RowMajorMatrix;
 use p3_uni_stark::{SubAirBuilder, prove, verify};
-use pool_prf::params::N;
 use std::borrow::Cow;
 
 type Preprocessing = PreprocessingStatement<KeyCommitment, MasksCommitment, MaskSumCommitment>;
-
-const EVALUATION_ROWS: usize = N.next_power_of_two();
 
 /// Where the columns of each constraint start.
 const KEY: usize = 0;
@@ -63,13 +62,13 @@ const NUM_PERIODIC_COLUMNS: usize = M + DIGEST_ELEMENTS;
 
 /// The rows of a table for `evaluations` evaluations.
 fn rows(evaluations: usize) -> usize {
-    (evaluations * EVALUATION_ROWS).next_power_of_two()
+    (evaluations * N_TABLE_ROWS).next_power_of_two()
 }
 
 /// The evaluation `row` is in, out of `evaluations`. The rows after the last
 /// evaluation count as the last one.
 fn evaluation(row: usize, evaluations: usize) -> usize {
-    (row / EVALUATION_ROWS).min(evaluations - 1)
+    (row / N_TABLE_ROWS).min(evaluations - 1)
 }
 
 /// The circuit of the whole preprocessing statement.

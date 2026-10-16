@@ -38,7 +38,7 @@ fn random_masks(rng: &mut StdRng) -> [Zq; RUNS_PER_EVALUATION] {
 }
 
 /// `r̃^k_Σ` of each run `k`.
-fn r_sigma_sums(
+pub fn r_sigma_sums(
     sk: &SecretKey,
     masks: &[[Zq; RUNS_PER_EVALUATION]; N],
 ) -> [Zq; RUNS_PER_EVALUATION] {
