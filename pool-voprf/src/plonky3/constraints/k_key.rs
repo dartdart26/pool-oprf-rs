@@ -4,23 +4,21 @@
 //! pk = Commit(Domain::Key, sk),   each sk_i in {0, 1}
 //! ```
 //!
-//! In order, Poseidon2 takes `WIDTH` slots:
+//! One row holds all of (K) and every row is the same. Domain, values and
+//! rest are Poseidon2's input.
 //!
-//! | slots                 | content                                   |
-//! |-----------------------|-------------------------------------------|
-//! | 1                     | the domain                                |
-//! | `PACKED_KEY_ELEMENTS` | the key, `BITS_PER_ELEMENT` bits per slot |
-//! | the rest              | zero                                      |
+//! | row      | key (`n`)          | domain (1)    | values (`PACKED_KEY_ELEMENTS`) | rest  | rounds      |
+//! |----------|--------------------|---------------|--------------------------------|-------|-------------|
+//! | `0`      | `sk_0 .. sk_{n-1}` | `Domain::Key` | `sk`, packed                   | zeros | end in `pk` |
+//! | `1`      | `sk_0 .. sk_{n-1}` | `Domain::Key` | `sk`, packed                   | zeros | end in `pk` |
+//! | …        | …                  | …             | …                              | …     | …           |
+//! | `ROWS-1` | `sk_0 .. sk_{n-1}` | `Domain::Key` | `sk`, packed                   | zeros | end in `pk` |
 //!
-//! The rest is the `CAPACITY` slots, which never take input, plus the
-//! input slots the key does not fill.
-//!
-//! Plonky3 checks Poseidon2 itself. We add these rules for (K):
+//! Plonky3 checks Poseidon2's rounds itself. We add these rules for (K):
 //!
 //! - every key bit is 0 or 1
-//! - Poseidon2's input is what `commit` gives it: the domain, the key bits
-//!   read as numbers, and zeros in the other slots
-//! - the first `DIGEST_ELEMENTS` of Poseidon2's output are `pk`
+//! - the inputs are `Domain::Key`, the key bits packed lowest first, then zeros
+//! - the rounds end in `pk`
 
 use crate::plonky3::commitments::key::{
     INPUT_ELEMENTS, KeyCommitment, PACKED_KEY_ELEMENTS, elements, pack_key,
@@ -37,18 +35,6 @@ use p3_matrix::dense::RowMajorMatrix;
 use pool_prf::params::N;
 use pool_prf::prf::SecretKey;
 
-// The row, `NUM_COLS` wide. `ROWS` of them, all containing the same values:
-//
-// | columns             | content                                             |
-// |---------------------|-----------------------------------------------------|
-// | `N`                 | the key bits, one per column                        |
-// | `WIDTH`             | Poseidon2's input: the domain, the key bits, then   |
-// |                     | zeros                                               |
-// | the rest of the run | Poseidon2's rounds: the helper values and the state |
-// |                     | after each round. The last state starts with `pk`   |
-//
-// The input and the rounds are one run, `PERMUTATION_COLS` together, and
-// there are `PERMUTATIONS` runs.
 const PERMUTATIONS: usize = permutations(INPUT_ELEMENTS);
 pub(crate) const NUM_COLS: usize = N + PERMUTATIONS * PERMUTATION_COLS;
 

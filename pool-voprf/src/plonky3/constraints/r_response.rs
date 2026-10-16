@@ -16,18 +16,21 @@
 //!
 //! # Layout
 //!
-//! One row holds one entry `j`. Its columns, in order:
+//! One row holds one entry `j`. Entry `j` is on row `j`, and again every `Δ`
+//! rows. The bits are lowest first.
 //!
-//! | columns | content                                    |
-//! |---------|--------------------------------------------|
-//! | 1       | `ã_Σ`                                      |
-//! | `LOG_Q` | the bits of `t_j`, lowest first            |
-//! | 1       | `wrapped`: 1 if `ã_Σ - j` was below zero   |
-//! | 1       | `pad_j`                                    |
-//! | 1       | `carry`: 1 if `⌈t_j⌋ + pad_j` reached `p`  |
+//! | row       | `ã_Σ` (1) | `t_j` (`LOG_Q`)   | wrapped (1) | pad (1)     | carry (1) |
+//! |-----------|-----------|-------------------|-------------|-------------|-----------|
+//! | `0`       | `ã_Σ`     | bits of `t_0`     | bit         | `pad_0`     | bit       |
+//! | `1`       | `ã_Σ`     | bits of `t_1`     | bit         | `pad_1`     | bit       |
+//! | …         | …         | …                 | …           | …           | …         |
+//! | `Δ-1`     | `ã_Σ`     | bits of `t_{Δ-1}` | bit         | `pad_{Δ-1}` | bit       |
+//! | `Δ`       | `ã_Σ`     | bits of `t_0`     | bit         | `pad_0`     | bit       |
+//! | …         | …         | …                 | …           | …           | …         |
+//! | `Δ·k + j` | `ã_Σ`     | bits of `t_j`     | bit         | `pad_j`     | bit       |
 //!
-//! `ã_Σ` is the number itself, in one column. Entry `j` is on row `j`, and
-//! again every `Δ` rows.
+//! `wrapped` is 1 if `ã_Σ - j` was below zero. `carry` is 1 if
+//! `⌈t_j⌋ + pad_j` reached `p`.
 //!
 //! Each row gets its `j` and its `y_j` from the selectors `s_0 .. s_{Δ-1}`,
 //! see [`selectors`]. On the rows of entry `j`, `s_j` is 1 and every other
