@@ -4,31 +4,26 @@
 //! d_j = Commit(Domain::Pad, r′_j, randomness_j),   j = 0 .. Δ-1
 //! ```
 //!
-//! # Layout
+//! One row holds one entry `j`. Entry `j` is on row `j`, and again every `Δ`
+//! rows. Domain, values and rest are Poseidon2's input.
 //!
-//! One entry per row. A row is `pad_j`, then the random value in
-//! `RANDOMNESS_ELEMENTS` columns, then Poseidon2's columns, as in (M).
-//! Entry `j` is on row `j`, and again every `Δ` rows.
+//! | row       | pad (1)     | random (`RANDOMNESS_ELEMENTS`) | domain (1)    | values (`PAIR_ELEMENTS`) | rest  | rounds           |
+//! |-----------|-------------|--------------------------------|---------------|--------------------------|-------|------------------|
+//! | `0`       | `pad_0`     | `randomness_0`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_0`     |
+//! | `1`       | `pad_1`     | `randomness_1`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_1`     |
+//! | …         | …           | …                              | …             | …                        | …     | …                |
+//! | `Δ-1`     | `pad_{Δ-1}` | `randomness_{Δ-1}`             | `Domain::Pad` | pad, random value        | zeros | end in `d_{Δ-1}` |
+//! | `Δ`       | `pad_0`     | `randomness_0`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_0`     |
+//! | …         | …           | …                              | …             | …                        | …     | …                |
+//! | `Δ·k + j` | `pad_j`     | `randomness_j`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_j`     |
 //!
-//! | row       | `pad_j`     | random value   | Poseidon2      |
-//! |-----------|-------------|----------------|----------------|
-//! | `0`       | `pad_0`     | of `pad_0`     | of `pad_0`     |
-//! | `1`       | `pad_1`     | of `pad_1`     | of `pad_1`     |
-//! | …         | …           | …              | …              |
-//! | `Δ-1`     | `pad_{Δ-1}` | of `pad_{Δ-1}` | of `pad_{Δ-1}` |
-//! | `Δ`       | `pad_0`     | of `pad_0`     | of `pad_0`     |
-//! | …         | …           | …              | …              |
-//! | `Δ·k + j` | `pad_j`     | of `pad_j`     | of `pad_j`     |
+//! Plonky3 checks Poseidon2's rounds itself. We add these rules for (P):
 //!
-//! # 1. The hash
+//! - the inputs are `Domain::Pad`, `pad_j`, the random value, then zeros
+//! - the rounds end in the `d_j` of the row's entry
 //!
-//! Poseidon2 takes the domain, then `pad_j` and the random value in the
-//! order of the row, one per slot, and zeros in the rest of its `WIDTH`
-//! slots.
-//!
-//! The permutation ends in the `d` of the row's entry. The rules are the
-//! same on every row, so the rule says which `d` with the selectors, see
-//! [`selectors`]:
+//! The rules are the same on every row. They pick the row's `d_j` with the
+//! selectors, see [`selectors`]:
 //!
 //! ```text
 //! hash = s_0·d_0 + s_1·d_1 + … + s_{Δ-1}·d_{Δ-1}

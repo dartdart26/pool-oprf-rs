@@ -14,6 +14,7 @@ pub use constraints::k_key::KeyAir;
 pub use constraints::m_mask_sum::MaskSumAir;
 pub use constraints::p_pads::PadsAir;
 pub use constraints::r_response::ResponseAir;
+pub use constraints::t_sum_of_masks::SumOfMasksAir;
 
 use p3_baby_bear::{Poseidon2BabyBear, default_babybear_poseidon2_16};
 use p3_challenger::DuplexChallenger;
@@ -25,6 +26,7 @@ use p3_fri::{FriParameters, HidingFriPcs};
 use p3_merkle_tree::MerkleTreeHidingMmcs;
 use p3_symmetric::TruncatedPermutation;
 use p3_uni_stark::{PcsError, PcsProverError, ProvingError, StarkConfig, VerificationError};
+use pool_prf::params::N;
 use rand::rngs::StdRng;
 use rand::{CryptoRng, SeedableRng};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -85,6 +87,12 @@ const NUM_RANDOM_CODEWORDS: usize = CHALLENGE_DIMENSION;
 /// hiding.
 /// TODO: Verify this is a good number.
 const ROWS: usize = 256;
+
+/// `n` rounded up to a power of 2: a table with one row per `i = 0 .. n-1`.
+const N_TABLE_ROWS: usize = N.next_power_of_two();
+
+/// Enough for any number up to `n`.
+const N_BITS: usize = N.ilog2() as usize + 1;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProveError {
