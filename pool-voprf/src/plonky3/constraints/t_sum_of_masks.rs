@@ -102,7 +102,7 @@ use pool_prf::params::{LOG_Q, N, Q, RUNS_PER_EVALUATION, Zq, ZqAccum};
 use pool_prf::prf::SecretKey;
 use std::borrow::Cow;
 
-const R_SIGMA_BITS: usize = LOG_Q as usize;
+pub(crate) const R_SIGMA_BITS: usize = LOG_Q as usize;
 /// The quotient is at most `n`.
 const QUOTIENT_BITS: usize = N_BITS;
 
@@ -111,7 +111,7 @@ pub(crate) const SK: usize = 0;
 const MASKS: usize = SK + 1;
 const SUMS: usize = MASKS + RUNS_PER_EVALUATION;
 pub(crate) const R_SIGMA: usize = SUMS + RUNS_PER_EVALUATION;
-const QUOTIENT: usize = R_SIGMA + RUNS_PER_EVALUATION * R_SIGMA_BITS;
+pub(crate) const QUOTIENT: usize = R_SIGMA + RUNS_PER_EVALUATION * R_SIGMA_BITS;
 pub(crate) const NUM_COLS: usize = QUOTIENT + RUNS_PER_EVALUATION * QUOTIENT_BITS;
 
 /// Both sides of the rule of step 2 are below this.
@@ -125,7 +125,9 @@ fn term(sk_i: u8, r: Zq) -> ZqAccum {
 }
 
 /// `first_block`, `has_next_block` and `last_block`.
-pub fn periodic_columns() -> [Vec<Val>; 3] {
+pub(crate) const NUM_PERIODIC_COLUMNS: usize = 3;
+
+pub fn periodic_columns() -> [Vec<Val>; NUM_PERIODIC_COLUMNS] {
     let column = |ones: Range<usize>| {
         (0..N_TABLE_ROWS)
             .map(|row| Val::from_bool(ones.contains(&row)))
@@ -215,7 +217,7 @@ impl BaseAir<Val> for SumOfMasksAir {
     }
 
     fn num_periodic_columns(&self) -> usize {
-        3
+        NUM_PERIODIC_COLUMNS
     }
 
     fn periodic_columns(&self) -> Cow<'_, [Vec<Val>]> {
@@ -225,10 +227,11 @@ impl BaseAir<Val> for SumOfMasksAir {
 
 impl<AB: AirBuilder<F = Val>> Air<AB> for SumOfMasksAir {
     fn eval(&self, builder: &mut AB) {
-        let [first_block, has_next_block, last_block]: [AB::PeriodicVar; 3] = builder
-            .periodic_values()
-            .try_into()
-            .expect("periodic columns");
+        let [first_block, has_next_block, last_block]: [AB::PeriodicVar; NUM_PERIODIC_COLUMNS] =
+            builder
+                .periodic_values()
+                .try_into()
+                .expect("periodic columns");
         Self::rules(
             builder,
             first_block.into(),
