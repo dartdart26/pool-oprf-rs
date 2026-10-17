@@ -1,7 +1,7 @@
 //! Constraint (T) from `docs/voprf.md`.
 //!
 //! ```text
-//! r̃^k_Σ = Σ_i (1 - 2·sk_i)·r^k_{b_i, i}   mod q
+//! r̃^{v, k}_Σ = Σ_i (1 - 2·sk_i)·r^{v, k}_{b_i, i}   mod q
 //! ```
 
 use crate::traits::Constraint;
@@ -11,9 +11,9 @@ use pool_prf::prf::SecretKey;
 
 pub struct SumOfMasks<'a> {
     pub sk: &'a SecretKey,
-    /// `r^k_{b_i, i}` of each `i` and run `k`.
+    /// `r^{v, k}_{b_i, i}` of each `i` and run `k`.
     pub masks: &'a [[Zq; RUNS_PER_EVALUATION]; N],
-    /// `r̃^k_Σ` of each run `k`.
+    /// `r̃^{v, k}_Σ` of each run `k`.
     pub r_sigma_sums: &'a [Zq; RUNS_PER_EVALUATION],
 }
 

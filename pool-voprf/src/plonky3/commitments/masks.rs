@@ -1,5 +1,5 @@
-//! `c_{0, i}` and `c_{1, i}` are [`MasksCommitment`]s to the masks of every
-//! run of an evaluation and a random value.
+//! `c^v_{0, i}` and `c^v_{1, i}` are [`MasksCommitment`]s to the masks of every
+//! run `k` and a random value.
 
 use crate::commitments::{CommitmentRandomness, MasksInput};
 use crate::hash_domains::Domain;
@@ -13,9 +13,6 @@ use pool_prf::params::{RUNS_PER_EVALUATION, Zq};
 pub const VALUE_ELEMENTS: usize = RUNS_PER_EVALUATION + RANDOMNESS_ELEMENTS;
 
 pub type MasksCommitment = Commitment<{ Domain::Masks as u32 }, VALUE_ELEMENTS>;
-
-/// Domain + the values.
-pub const INPUT_ELEMENTS: usize = 1 + VALUE_ELEMENTS;
 
 pub fn elements(
     masks: &[Zq; RUNS_PER_EVALUATION],

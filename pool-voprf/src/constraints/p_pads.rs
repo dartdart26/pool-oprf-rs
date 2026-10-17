@@ -1,7 +1,7 @@
 //! Constraint (P) from `docs/voprf.md`.
 //!
 //! ```text
-//! d_j = Commit(Domain::Pad, r′_j, randomness_j),   j = 0 .. Δ-1
+//! d^{v, k}_j = Commit(Domain::Pad, r′^{v, k}_j, ot_block′^{v, k}_j),   j = 0 .. Δ-1
 //! ```
 
 use crate::commitments::{CommitmentRandomness, PadInput};
@@ -9,11 +9,11 @@ use crate::traits::{Commitment, Constraint};
 use pool_prf::params::{DELTA, Zp};
 
 pub struct Pads<'a, D> {
-    /// `d_0 .. d_{Δ-1}`.
+    /// `d^{v, k}_0 .. d^{v, k}_{Δ-1}`.
     pub d: &'a [D; DELTA],
-    /// `r′_0 .. r′_{Δ-1}`.
+    /// `r′^{v, k}_0 .. r′^{v, k}_{Δ-1}`.
     pub pads: &'a [Zp; DELTA],
-    /// Hashed into `d_j` with `r′_j`.
+    /// Hashed into `d^{v, k}_j` with `r′^{v, k}_j`.
     pub randomness: &'a [CommitmentRandomness; DELTA],
 }
 

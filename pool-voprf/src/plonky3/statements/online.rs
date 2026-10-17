@@ -3,33 +3,34 @@
 //! # Layout
 //!
 //! One proof covers one evaluation i.e. `RUNS_PER_EVALUATION` runs. Each run
-//! gets `Δ` consecutive rows, one per entry `j` of its response `y_j`:
+//! gets `Δ` consecutive rows, one per entry `j` of its response `y^{v, k}_j`:
 //! run 0 is rows `0 .. Δ-1`, run 1 is rows `Δ .. 2Δ-1`, and so
 //! on. Entry `j` of run `k` is on row `Δ·k + j`, and the table has
 //! `RUNS_PER_EVALUATION·Δ = ROWS` rows.
 //!
 //! Each row holds the columns of all constraints side by side.
 //!
-//! | row       | (K)          | (M)           | (A)                      | (R)                          | (P)                            |
-//! |-----------|--------------|---------------|--------------------------|------------------------------|--------------------------------|
-//! | `0`       | (K) for `sk` | (M) for `r̃_Σ` | (A) for run 0's `ã_Σ`    | (R) for run 0's `y_0`        | (P) for run 0's `pad_0`        |
-//! | `1`       | (K) for `sk` | (M) for `r̃_Σ` | (A) for run 0's `ã_Σ`    | (R) for run 0's `y_1`        | (P) for run 0's `pad_1`        |
-//! | …         | …            | …             | …                        | …                            | …                              |
-//! | `Δ-1`     | (K) for `sk` | (M) for `r̃_Σ` | (A) for run 0's `ã_Σ`    | (R) for run 0's `y_{Δ-1}`    | (P) for run 0's `pad_{Δ-1}`    |
-//! | `Δ`       | (K) for `sk` | (M) for `r̃_Σ` | (A) for run 1's `ã_Σ`    | (R) for run 1's `y_0`        | (P) for run 1's `pad_0`        |
-//! | …         | …            | …             | …                        | …                            | …                              |
-//! | `Δ·k + j` | (K) for `sk` | (M) for `r̃_Σ` | (A) for run k's `ã_Σ`    | (R) for run k's `y_j`        | (P) for run k's `pad_j`        |
-//! | …         | …            | …             | …                        | …                            | …                              |
-//! | `ROWS-1`  | (K) for `sk` | (M) for `r̃_Σ` | (A) for last run's `ã_Σ` | (R) for last run's `y_{Δ-1}` | (P) for last run's `pad_{Δ-1}` |
+//! | row       | (K)          | (M)           | (A)                                      | (R)                                          | (P)                            |
+//! |-----------|--------------|---------------|------------------------------------------|----------------------------------------------|--------------------------------|
+//! | `0`       | (K) for `sk` | (M) for `m^v` | (A) for `ã^{v, 0}_Σ`                     | (R) for `y^{v, 0}_0`                         | (P) for run 0's `pad_0`        |
+//! | `1`       | (K) for `sk` | (M) for `m^v` | (A) for `ã^{v, 0}_Σ`                     | (R) for `y^{v, 0}_1`                         | (P) for run 0's `pad_1`        |
+//! | …         | …            | …             | …                                        | …                                            | …                              |
+//! | `Δ-1`     | (K) for `sk` | (M) for `m^v` | (A) for `ã^{v, 0}_Σ`                     | (R) for `y^{v, 0}_{Δ-1}`                     | (P) for run 0's `pad_{Δ-1}`    |
+//! | `Δ`       | (K) for `sk` | (M) for `m^v` | (A) for `ã^{v, 1}_Σ`                     | (R) for `y^{v, 1}_0`                         | (P) for run 1's `pad_0`        |
+//! | …         | …            | …             | …                                        | …                                            | …                              |
+//! | `Δ·k + j` | (K) for `sk` | (M) for `m^v` | (A) for `ã^{v, k}_Σ`                     | (R) for `y^{v, k}_j`                         | (P) for run k's `pad_j`        |
+//! | …         | …            | …             | …                                        | …                                            | …                              |
+//! | `ROWS-1`  | (K) for `sk` | (M) for `m^v` | (A) for `ã^{v, RUNS_PER_EVALUATION-1}_Σ` | (R) for `y^{v, RUNS_PER_EVALUATION-1}_{Δ-1}` | (P) for last run's `pad_{Δ-1}` |
 //!
 //! (K) and (M) are the same on every row, because `sk` is the same in every run
-//! and (M) holds the `r̃_Σ` of all runs at once.
+//! and (M) holds the `r̃^{v, k}_Σ` of all runs at once.
 //!
-//! (A) is the same on the `Δ` rows of a run, because `ã_Σ` does not depend on `j`.
+//! (A) is the same on the `Δ` rows of a run, because `ã^{v, k}_Σ` does not
+//! depend on `j`.
 //!
 //! (R) and (P) change on every row.
 //!
-//! The public values are `pk` and `m`, `e`, `y` and `d`.
+//! The public values are `pk` and `m^v`, `e^{v, k}`, `y^{v, k}` and `d^{v, k}`.
 //!
 //! # 1. The constraints
 //!
@@ -37,13 +38,13 @@
 //! its rules compare the block with a public value, and which public value
 //! that is depends on the row:
 //!
-//! - (K) and (M) use `pk` and `m`, the same on every row.
-//! - (A) uses the request `e`: on the rows of run `k`, run `k`'s `e`.
-//! - (R) uses the response: on row `Δ·k + j`, run `k`'s `y_j`.
+//! - (K) and (M) use `pk` and `m^v`, the same on every row.
+//! - (A) uses the request: on the rows of run `k`, `e^{v, k}`.
+//! - (R) uses the response: on row `Δ·k + j`, `y^{v, k}_j`.
 //! - (P) uses the pad commitments: on row `Δ·k + j` (run `k`),
-//!   `d_{(j - b̄′) mod Δ}` as (R) uses pad `r′_{(j - b̄′) mod Δ}` there. The
-//!   circuit gives (P) the pads and `d` in that order, see
-//!   [`in_response_order`].
+//!   `d^{v, k}_{(j - b̄′^{v, k}) mod Δ}` as (R) uses pad
+//!   `r′^{v, k}_{(j - b̄′^{v, k}) mod Δ}` there. The circuit gives (P) the pads
+//!   and `d^{v, k}` in that order, see [`in_response_order`].
 //!
 //! The selectors pick these out, see [`selectors`]: `u_k` is 1 on the rows
 //! of run `k`, and `s_j` is 1 on the rows of entry `j`.
@@ -57,6 +58,7 @@ use crate::plonky3::commitments::DIGEST_ELEMENTS;
 use crate::plonky3::commitments::key::KeyCommitment;
 use crate::plonky3::commitments::mask_sum::MaskSumCommitment;
 use crate::plonky3::commitments::pad::PadCommitment;
+use crate::plonky3::constraints::common::KEY_BITS;
 use crate::plonky3::constraints::{a_sum, k_key, m_mask_sum, p_pads, r_response};
 use crate::plonky3::selectors::{index, select, selectors};
 use crate::plonky3::{
@@ -91,7 +93,7 @@ const RESPONSE: usize = SUM + a_sum::NUM_COLS;
 const PADS: usize = RESPONSE + r_response::NUM_COLS;
 const NUM_COLS: usize = PADS + p_pads::NUM_COLS;
 
-/// Where the public values start: `pk`, `m`, then the runs.
+/// Where the public values start: `pk`, `m^v`, then the runs.
 const PK: usize = 0;
 const M: usize = PK + DIGEST_ELEMENTS;
 const FIRST_RUN: usize = M + DIGEST_ELEMENTS;
@@ -108,7 +110,7 @@ const U: usize = S + DELTA;
 const NUM_PERIODIC_COLUMNS: usize = U + RUNS_PER_EVALUATION;
 
 /// `values` in the order (R) uses the pads: entry `j` is value
-/// `(j - b̄′) mod Δ`.
+/// `(j - b̄′^{v, k}) mod Δ`.
 fn in_response_order<T: Copy>(values: &[T; DELTA], b_bar_prime: Zdelta) -> [T; DELTA] {
     array::from_fn(|j| values[usize::from(sub_delta(j as Zdelta, b_bar_prime))])
 }
@@ -225,12 +227,12 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for OnlineAir {
         let m: [AB::Expr; DIGEST_ELEMENTS] = array::from_fn(|i| public[M + i].into());
         let e: [AB::Expr; N] =
             array::from_fn(|i| of_run::<AB>(&u, public, |run| run[E + i].into()));
-        // The row's entry `j`, and its `y_j` out of the run's Δ.
+        // The row's entry `j`, and its `y^{v, k}_j` out of the run's Δ.
         let j = index::<AB, DELTA>(&s);
         let y_j = of_run::<AB>(&u, public, |run| {
             select::<AB, DELTA>(&s, array::from_fn(|j| run[Y + j].into()))
         });
-        // The `d` of the row's entry, out of the run's Δ.
+        // The `d^{v, k}_j` of the row's entry, out of the run's Δ.
         let d: [AB::Expr; DIGEST_ELEMENTS] = array::from_fn(|i| {
             of_run::<AB>(&u, public, |run| {
                 let d_j = array::from_fn(|j| run[D + j * DIGEST_ELEMENTS + i].into());
@@ -255,20 +257,20 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for OnlineAir {
         let pads_columns = &row[PADS..NUM_COLS];
 
         // The key bits are the first columns of (K) and of (A).
-        let key_sk = &key_columns[..N];
-        let sum_sk = &sum_columns[a_sum::SK..a_sum::R_SIGMA];
+        let key_sk = &key_columns[..KEY_BITS];
+        let sum_sk = &sum_columns[..KEY_BITS];
         for (&key_bit, &sum_bit) in key_sk.iter().zip(sum_sk) {
             builder.assert_eq(sum_bit, key_bit);
         }
 
-        // `r̃_Σ` of the row's run is one column in (A) and one of (M)'s
+        // `r̃^{v, k}_Σ` of the row's run is one column in (A) and one of (M)'s
         // `RUNS_PER_EVALUATION` columns, which `u` picks.
         let r_sigma_sums = &mask_sum_columns[m_mask_sum::R_SIGMA..m_mask_sum::RANDOMNESS];
         let r_sigma_sums = array::from_fn(|k| r_sigma_sums[k].into());
         let r_sigma_sum = select::<AB, RUNS_PER_EVALUATION>(&u, r_sigma_sums);
         builder.assert_eq(sum_columns[a_sum::R_SIGMA], r_sigma_sum);
 
-        // `ã_Σ` is bits in (A) and one column of (R).
+        // `ã^{v, k}_Σ` is bits in (A) and one column of (R).
         let a_sigma_bits = &sum_columns[a_sum::A_SIGMA..a_sum::QUOTIENT];
         let a_sigma_sum = pack_bits_le::<AB::Expr, _, _>(a_sigma_bits.iter().copied());
         builder.assert_eq(response_columns[r_response::A_SIGMA], a_sigma_sum);
@@ -375,14 +377,15 @@ mod tests {
         assert!(report(&trace, &statement).is_ok());
     }
 
-    /// The public values of each run are checked on its rows: another `e`,
-    /// `y` or `d` in any run refuses the honest table.
+    /// The public values of each run are checked on its rows: another
+    /// `e^{v, k}`, `y^{v, k}` or `d^{v, k}` in any run refuses the honest
+    /// table.
     #[test]
     fn every_run_is_checked() {
         let (statement, witness) = random(7);
         let (other, _) = random(8);
         let trace = OnlineAir::trace(&statement, &witness);
-        // `e_i` enters the sum where `sk_i = 1` only.
+        // `e^{v, k}_i` enters the sum where `sk_i = 1` only.
         let i = witness
             .sk
             .as_bits()
@@ -434,7 +437,8 @@ mod tests {
         assert!(!report(&trace, &statement).is_ok());
     }
 
-    /// Each constraint holds on its own columns, so only the rule that ties `r̃_Σ` refuses it.
+    /// Each constraint holds on its own columns, so only the rule that ties
+    /// `r̃^{v, k}_Σ` refuses it.
     #[test]
     fn a_sum_with_another_r_sigma_sum_is_refused() {
         let (mut statement, witness) = random(4);
@@ -466,7 +470,8 @@ mod tests {
         assert!(!report(&trace, &statement).is_ok());
     }
 
-    /// Each constraint holds on its own columns, so only the rule that ties `ã_Σ` refuses it.
+    /// Each constraint holds on its own columns, so only the rule that ties
+    /// `ã^{v, k}_Σ` refuses it.
     #[test]
     fn a_response_from_another_a_sigma_sum_is_refused() {
         let (mut statement, witness) = random(5);

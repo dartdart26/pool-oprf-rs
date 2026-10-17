@@ -17,9 +17,6 @@ pub const PACKED_KEY_ELEMENTS: usize = N.div_ceil(BITS_PER_ELEMENT);
 /// `pk`: a commitment to the packed key.
 pub type KeyCommitment = Commitment<{ Domain::Key as u32 }, PACKED_KEY_ELEMENTS>;
 
-/// What the commitment ingests - the domain + the packed key.
-pub const INPUT_ELEMENTS: usize = 1 + PACKED_KEY_ELEMENTS;
-
 /// The key as [`PACKED_KEY_ELEMENTS`] numbers of [`BITS_PER_ELEMENT`] bits.
 pub fn pack_key(sk: &SecretKey) -> Zeroizing<[u32; PACKED_KEY_ELEMENTS]> {
     let mut packed = Zeroizing::new([0u32; PACKED_KEY_ELEMENTS]);

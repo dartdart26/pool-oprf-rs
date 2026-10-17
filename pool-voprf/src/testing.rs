@@ -37,7 +37,7 @@ fn random_masks(rng: &mut StdRng) -> [Zq; RUNS_PER_EVALUATION] {
     array::from_fn(|_| rng.random_range(0..Q))
 }
 
-/// `r̃^k_Σ` of each run `k`.
+/// `r̃^{v, k}_Σ` of each run `k`.
 pub fn r_sigma_sums(
     sk: &SecretKey,
     masks: &[[Zq; RUNS_PER_EVALUATION]; N],

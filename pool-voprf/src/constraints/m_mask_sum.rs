@@ -1,7 +1,7 @@
 //! Constraint (M) from `docs/voprf.md`.
 //!
 //! ```text
-//! m = Commit(Domain::MaskSum, r̃^0_Σ .. r̃^{RUNS_PER_EVALUATION-1}_Σ, randomness)
+//! m^v = Commit(Domain::MaskSum, r̃^{v, 0}_Σ .. r̃^{v, RUNS_PER_EVALUATION-1}_Σ, randomness^v)
 //! ```
 
 use crate::commitments::{CommitmentRandomness, MaskSumsInput};
@@ -10,9 +10,9 @@ use pool_prf::params::{RUNS_PER_EVALUATION, Zq};
 
 pub struct MaskSum<'a, M> {
     pub m: &'a M,
-    /// `r̃_Σ` of each run.
+    /// `r̃^{v, k}_Σ` of each run `k`.
     pub r_sigma_sum: &'a [Zq; RUNS_PER_EVALUATION],
-    /// Hashed into `m` with the sums.
+    /// Hashed into `m^v` with the sums.
     pub randomness: CommitmentRandomness,
 }
 

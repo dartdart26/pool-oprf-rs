@@ -1,7 +1,7 @@
 //! Constraint (T) on Plonky3:
 //!
 //! ```text
-//! r̃^k_Σ = Σ_i (1 - 2·sk_i)·r^k_{b_i, i}   mod q
+//! r̃^{v, k}_Σ = Σ_i (1 - 2·sk_i)·r^{v, k}_{b_i, i}   mod q
 //! ```
 //!
 //! (T) takes `sk` and the masks as given - (K) and (S) pin them down.
@@ -12,17 +12,17 @@
 //! The rows after block `n-1`, up to `N_TABLE_ROWS`, repeat the row of
 //! block `n-1`. The bits are lowest first.
 //!
-//! | row              | `sk_i` (1) | masks (`RUNS_PER_EVALUATION`) | sums (`RUNS_PER_EVALUATION`) | `r̃_Σ` (`LOG_Q` per run) | quotient (`QUOTIENT_BITS` per run) |
-//! |------------------|------------|-------------------------------|------------------------------|-------------------------|------------------------------------|
-//! | `0`              | `sk_0`     | `r^k_{b_0, 0}`                | `S^k_0`                      | bits                    | bits                               |
-//! | `1`              | `sk_1`     | `r^k_{b_1, 1}`                | `S^k_1`                      | bits                    | bits                               |
-//! | …                | …          | …                             | …                            | …                       | …                                  |
-//! | `n-1`            | `sk_{n-1}` | `r^k_{b_{n-1}, n-1}`          | `S^k_{n-1}`                  | bits                    | bits                               |
-//! | `n`              | `sk_{n-1}` | `r^k_{b_{n-1}, n-1}`          | `S^k_{n-1}`                  | bits                    | bits                               |
-//! | …                | …          | …                             | …                            | …                       | …                                  |
-//! | `N_TABLE_ROWS-1` | `sk_{n-1}` | `r^k_{b_{n-1}, n-1}`          | `S^k_{n-1}`                  | bits                    | bits                               |
+//! | row              | `sk_i` (1) | masks (`RUNS_PER_EVALUATION`) | sums (`RUNS_PER_EVALUATION`) | `r̃^{v, k}_Σ` (`LOG_Q` per run) | quotient (`QUOTIENT_BITS` per run) |
+//! |------------------|------------|-------------------------------|------------------------------|--------------------------------|------------------------------------|
+//! | `0`              | `sk_0`     | `r^{v, k}_{b_0, 0}`           | `S^{v, k}_0`                 | bits                           | bits                               |
+//! | `1`              | `sk_1`     | `r^{v, k}_{b_1, 1}`           | `S^{v, k}_1`                 | bits                           | bits                               |
+//! | …                | …          | …                             | …                            | …                              | …                                  |
+//! | `n-1`            | `sk_{n-1}` | `r^{v, k}_{b_{n-1}, n-1}`     | `S^{v, k}_{n-1}`             | bits                           | bits                               |
+//! | `n`              | `sk_{n-1}` | `r^{v, k}_{b_{n-1}, n-1}`     | `S^{v, k}_{n-1}`             | bits                           | bits                               |
+//! | …                | …          | …                             | …                            | …                              | …                                  |
+//! | `N_TABLE_ROWS-1` | `sk_{n-1}` | `r^{v, k}_{b_{n-1}, n-1}`     | `S^{v, k}_{n-1}`             | bits                           | bits                               |
 //!
-//! `r̃^k_Σ` and `quotient^k` are the same on every row.
+//! `r̃^{v, k}_Σ` and `quotient^{v, k}` are the same on every row.
 //!
 //! # 1. The sum
 //!
@@ -33,28 +33,28 @@
 //! never takes the sum below zero.
 //!
 //! ```text
-//! S^k_i = S^k_{i-1} + r^k_{b_i, i}        where sk_i = 0
-//! S^k_i = S^k_{i-1} + q - r^k_{b_i, i}    where sk_i = 1
+//! S^{v, k}_i = S^{v, k}_{i-1} + r^{v, k}_{b_i, i}        where sk_i = 0
+//! S^{v, k}_i = S^{v, k}_{i-1} + q - r^{v, k}_{b_i, i}    where sk_i = 1
 //! ```
 //!
 //! Row 0 starts from 0 and row `n-1` holds the whole sum.
 //!
 //! # 2. The sum mod `q`
 //!
-//! The server computes `r̃^k_Σ = S^k_{n-1} mod q` and `quotient^k` and puts
-//! both in the row as bits. The rule checks:
+//! The server computes `r̃^{v, k}_Σ = S^{v, k}_{n-1} mod q` and
+//! `quotient^{v, k}` and puts both in the row as bits. The rule checks:
 //!
 //! ```text
-//! S^k_{n-1} = r̃^k_Σ + q·quotient^k
+//! S^{v, k}_{n-1} = r̃^{v, k}_Σ + q·quotient^{v, k}
 //! ```
 //!
-//! `r̃^k_Σ` is `LOG_Q` bits, therefore below `q`.
+//! `r̃^{v, k}_Σ` is `LOG_Q` bits, therefore below `q`.
 //!
 //! No rule here checks that a mask is in `ℤ_q`. Instead, (S) ties the masks to
 //! the client's commitment and the client commits to masks in `ℤ_q`. Each row,
 //! therefore, adds at most `q`, so the sum is at most `n·q` and the quotient at
 //! most `n`. Both sides stay below the field's prime, therefore no huge
-//! `quotient^k` can make a wrong `r̃^k_Σ` pass the checks.
+//! `quotient^{v, k}` can make a wrong `r̃^{v, k}_Σ` pass the checks.
 //!
 //! # 3. Which rows check what
 //!
@@ -78,16 +78,16 @@
 //! On the rows where its periodic column is 1, each rule checks:
 //!
 //! ```text
-//! first_block, row 0:     S^k_0     = r^k_{b_0, 0}                      where sk_0 = 0
-//!                         S^k_0     = q - r^k_{b_0, 0}                  where sk_0 = 1
-//! has_next_block, row i:  S^k_{i+1} = S^k_i + r^k_{b_{i+1}, i+1}        where sk_{i+1} = 0
-//!                         S^k_{i+1} = S^k_i + q - r^k_{b_{i+1}, i+1}    where sk_{i+1} = 1
-//! last_block, row n-1:    S^k_{n-1} = r̃^k_Σ + q·quotient^k
+//! first_block, row 0:     S^{v, k}_0     = r^{v, k}_{b_0, 0}                           where sk_0 = 0
+//!                         S^{v, k}_0     = q - r^{v, k}_{b_0, 0}                       where sk_0 = 1
+//! has_next_block, row i:  S^{v, k}_{i+1} = S^{v, k}_i + r^{v, k}_{b_{i+1}, i+1}        where sk_{i+1} = 0
+//!                         S^{v, k}_{i+1} = S^{v, k}_i + q - r^{v, k}_{b_{i+1}, i+1}    where sk_{i+1} = 1
+//! last_block, row n-1:    S^{v, k}_{n-1} = r̃^{v, k}_Σ + q·quotient^{v, k}
 //! ```
 //!
 //! On every row, the rules check that each bit column is 0 or 1.
 
-use crate::plonky3::constraints::a_sum::bits;
+use crate::plonky3::constraints::common::bits;
 use crate::plonky3::{N_BITS, N_TABLE_ROWS, Val};
 use core::array;
 use core::iter;
@@ -107,8 +107,8 @@ pub(crate) const R_SIGMA_BITS: usize = LOG_Q as usize;
 const QUOTIENT_BITS: usize = N_BITS;
 
 /// Where each part of the row starts.
-pub(crate) const SK: usize = 0;
-const MASKS: usize = SK + 1;
+pub(crate) const SK_I: usize = 0;
+pub(crate) const MASKS: usize = SK_I + 1;
 const SUMS: usize = MASKS + RUNS_PER_EVALUATION;
 pub(crate) const R_SIGMA: usize = SUMS + RUNS_PER_EVALUATION;
 pub(crate) const QUOTIENT: usize = R_SIGMA + RUNS_PER_EVALUATION * R_SIGMA_BITS;
@@ -176,7 +176,7 @@ impl SumOfMasksAir {
         let (row, next) = (main.current_slice(), main.next_slice());
         let r_sigma_bits = &row[R_SIGMA..QUOTIENT];
         let quotient_bits = &row[QUOTIENT..NUM_COLS];
-        for &bit in iter::once(&row[SK])
+        for &bit in iter::once(&row[SK_I])
             .chain(r_sigma_bits)
             .chain(quotient_bits)
         {
@@ -186,7 +186,7 @@ impl SumOfMasksAir {
         let q: AB::Expr = Val::from_int(Q).into();
         // r + sk·(q - 2·r): r where sk = 0, q - r where sk = 1.
         let term = |row: &[AB::Var], k: usize| -> AB::Expr {
-            let (sk, r) = (row[SK], row[MASKS + k]);
+            let (sk, r) = (row[SK_I], row[MASKS + k]);
             r + sk * (q.clone() - r * Val::TWO)
         };
         let runs = r_sigma_bits
@@ -201,7 +201,7 @@ impl SumOfMasksAir {
                 .when(has_next_block.clone())
                 .assert_eq(next_sum, sum + term(next, k));
 
-            // S^k_{n-1} = r̃^k_Σ + q·quotient^k
+            // S^{v, k}_{n-1} = r̃^{v, k}_Σ + q·quotient^{v, k}
             let r_sigma = pack_bits_le::<AB::Expr, _, _>(r_sigma_bits.iter().copied());
             let quotient = pack_bits_le::<AB::Expr, _, _>(quotient_bits.iter().copied());
             builder
@@ -281,7 +281,7 @@ mod tests {
         check_all_constraints(&SumOfMasksAir, trace, &[], None).is_ok()
     }
 
-    /// `r̃^k_Σ` of each run `k` as the trace holds it, from its bits.
+    /// `r̃^{v, k}_Σ` of each run `k` as the trace holds it, from its bits.
     fn r_sigma_sums_of(trace: &RowMajorMatrix<Val>) -> Vec<Zq> {
         let row = trace.row_slice(0).expect("a row");
         row[R_SIGMA..QUOTIENT]
@@ -297,7 +297,7 @@ mod tests {
         }
     }
 
-    /// The trace holds the `r̃^k_Σ` the server computes.
+    /// The trace holds the `r̃^{v, k}_Σ` the server computes.
     #[test]
     fn r_sigma_sums_are_the_servers() {
         for (sk, masks) in cases() {
