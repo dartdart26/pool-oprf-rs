@@ -87,7 +87,7 @@
 //!
 //! On every row, the rules check that each bit column is 0 or 1.
 
-use crate::plonky3::constraints::a_sum::bits;
+use crate::plonky3::constraints::common::bits;
 use crate::plonky3::{N_BITS, N_TABLE_ROWS, Val};
 use core::array;
 use core::iter;
@@ -107,8 +107,8 @@ pub(crate) const R_SIGMA_BITS: usize = LOG_Q as usize;
 const QUOTIENT_BITS: usize = N_BITS;
 
 /// Where each part of the row starts.
-pub(crate) const SK: usize = 0;
-const MASKS: usize = SK + 1;
+pub(crate) const SK_I: usize = 0;
+pub(crate) const MASKS: usize = SK_I + 1;
 const SUMS: usize = MASKS + RUNS_PER_EVALUATION;
 pub(crate) const R_SIGMA: usize = SUMS + RUNS_PER_EVALUATION;
 pub(crate) const QUOTIENT: usize = R_SIGMA + RUNS_PER_EVALUATION * R_SIGMA_BITS;
@@ -176,7 +176,7 @@ impl SumOfMasksAir {
         let (row, next) = (main.current_slice(), main.next_slice());
         let r_sigma_bits = &row[R_SIGMA..QUOTIENT];
         let quotient_bits = &row[QUOTIENT..NUM_COLS];
-        for &bit in iter::once(&row[SK])
+        for &bit in iter::once(&row[SK_I])
             .chain(r_sigma_bits)
             .chain(quotient_bits)
         {
@@ -186,7 +186,7 @@ impl SumOfMasksAir {
         let q: AB::Expr = Val::from_int(Q).into();
         // r + sk·(q - 2·r): r where sk = 0, q - r where sk = 1.
         let term = |row: &[AB::Var], k: usize| -> AB::Expr {
-            let (sk, r) = (row[SK], row[MASKS + k]);
+            let (sk, r) = (row[SK_I], row[MASKS + k]);
             r + sk * (q.clone() - r * Val::TWO)
         };
         let runs = r_sigma_bits

@@ -57,6 +57,7 @@ use crate::plonky3::commitments::DIGEST_ELEMENTS;
 use crate::plonky3::commitments::key::KeyCommitment;
 use crate::plonky3::commitments::mask_sum::MaskSumCommitment;
 use crate::plonky3::commitments::pad::PadCommitment;
+use crate::plonky3::constraints::common::KEY_BITS;
 use crate::plonky3::constraints::{a_sum, k_key, m_mask_sum, p_pads, r_response};
 use crate::plonky3::selectors::{index, select, selectors};
 use crate::plonky3::{
@@ -255,8 +256,8 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for OnlineAir {
         let pads_columns = &row[PADS..NUM_COLS];
 
         // The key bits are the first columns of (K) and of (A).
-        let key_sk = &key_columns[..N];
-        let sum_sk = &sum_columns[a_sum::SK..a_sum::R_SIGMA];
+        let key_sk = &key_columns[..KEY_BITS];
+        let sum_sk = &sum_columns[..KEY_BITS];
         for (&key_bit, &sum_bit) in key_sk.iter().zip(sum_sk) {
             builder.assert_eq(sum_bit, key_bit);
         }

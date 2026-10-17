@@ -39,9 +39,20 @@ nothing else. This note uses maliciously secure OT, which behaves like that
 box even when either party cheats. [Section 6](#6-the-ot-underneath) talks
 more about the underlying OTs.
 
-We call the results expanded from the binary OT blocks **masks**, e.g.
-`r^k_{b_i, i}`, and the values derived from the 1-out-of-Δ OTs **pads**,
-e.g. `r′^k_0 .. r′^k_{Δ-1}`.
+We call the results expanded from the binary OT blocks **masks**, and the
+values derived from the 1-out-of-Δ OTs **pads**. The binary OT gives one OT
+block `ot_block_{b, i}` for each `i` and `b`, for the whole preprocessing.
+Both parties expand an OT block into a list of `τ` masks, one per run of the
+preprocessing. Evaluation 0 uses the first `RUNS_PER_EVALUATION` masks of the
+list, evaluation 1 the next `RUNS_PER_EVALUATION`, and so on. In evaluation
+`v`, `r^k_{b, i}` is mask `v·RUNS_PER_EVALUATION + k` of the list from
+`ot_block_{b, i}`. Each run has its own 1-out-of-Δ OT, which gives the pads
+`r′^k_0 .. r′^k_{Δ-1}` of that run.
+
+Values of one evaluation leave `v` out, as in `r^k_{b, i}`. The online proof
+covers one evaluation, and in the preprocessing the text says which
+evaluation it is about. Only `c^v` and `m^v` keep `v`, because the
+preprocessing statement holds them for all evaluations.
 
 ## 2. High level design
 

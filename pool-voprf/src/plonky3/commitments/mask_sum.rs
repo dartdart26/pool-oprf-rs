@@ -14,9 +14,6 @@ pub const VALUE_ELEMENTS: usize = RUNS_PER_EVALUATION + RANDOMNESS_ELEMENTS;
 
 pub type MaskSumCommitment = Commitment<{ Domain::MaskSum as u32 }, VALUE_ELEMENTS>;
 
-/// Domain + the values.
-pub const INPUT_ELEMENTS: usize = 1 + VALUE_ELEMENTS;
-
 pub fn elements(
     r_sigma_sum: &[Zq; RUNS_PER_EVALUATION],
     randomness: CommitmentRandomness,

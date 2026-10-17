@@ -14,6 +14,7 @@ pub use constraints::k_key::KeyAir;
 pub use constraints::m_mask_sum::MaskSumAir;
 pub use constraints::p_pads::PadsAir;
 pub use constraints::r_response::ResponseAir;
+pub use constraints::s_masks::ServerMasksAir;
 pub use constraints::t_sum_of_masks::SumOfMasksAir;
 
 use p3_baby_bear::{Poseidon2BabyBear, default_babybear_poseidon2_16};

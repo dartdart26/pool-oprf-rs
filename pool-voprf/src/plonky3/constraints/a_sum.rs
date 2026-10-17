@@ -34,6 +34,7 @@
 //! Let's call the field's prime `Pf`. `S` and `q·quotient + ã_Σ` must stay
 //! below `Pf`, because the rule compares them `mod Pf`.
 
+use crate::plonky3::constraints::common::{KEY_BITS, bits};
 use crate::plonky3::{N_BITS, ROWS, Val};
 use p3_air::utils::pack_bits_le;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
@@ -48,9 +49,8 @@ const A_SIGMA_BITS: usize = LOG_Q as usize;
 /// The quotient is at most `n`.
 const QUOTIENT_BITS: usize = N_BITS;
 
-/// Where each part of the row starts.
-pub(crate) const SK: usize = 0;
-pub(crate) const R_SIGMA: usize = SK + N;
+/// Where each part of the row starts, after the key bits.
+pub(crate) const R_SIGMA: usize = KEY_BITS;
 pub(crate) const A_SIGMA: usize = R_SIGMA + 1;
 pub(crate) const QUOTIENT: usize = A_SIGMA + A_SIGMA_BITS;
 pub(crate) const NUM_COLS: usize = QUOTIENT + QUOTIENT_BITS;
@@ -58,11 +58,6 @@ pub(crate) const NUM_COLS: usize = QUOTIENT + QUOTIENT_BITS;
 /// Both sides of the sum rule are below this.
 const SUM_BOUND: usize = (Q as usize) << QUOTIENT_BITS;
 const _: () = assert!(SUM_BOUND < Val::ORDER_U32 as usize);
-
-/// The lowest `count` bits of `value`, as columns.
-pub(crate) fn bits(value: ZqAccum, count: usize) -> impl Iterator<Item = Val> {
-    (0..count).map(move |k| Val::from_int((value >> k) & 1))
-}
 
 pub struct SumAir;
 
@@ -91,7 +86,7 @@ impl SumAir {
     pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, e: [AB::Expr; N]) {
         let main = builder.main();
         let row = main.current_slice();
-        let sk = &row[SK..R_SIGMA];
+        let sk = &row[..KEY_BITS];
         let r_sigma_sum: AB::Expr = row[R_SIGMA].into();
         let a_sigma_bits = &row[A_SIGMA..QUOTIENT];
         let quotient_bits = &row[QUOTIENT..NUM_COLS];

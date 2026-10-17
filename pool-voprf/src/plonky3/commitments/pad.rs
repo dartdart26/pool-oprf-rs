@@ -9,9 +9,6 @@ use pool_prf::params::Zp;
 /// `d_j`.
 pub type PadCommitment = Commitment<{ Domain::Pad as u32 }, PAIR_ELEMENTS>;
 
-/// Domain + the pair.
-pub const INPUT_ELEMENTS: usize = 1 + PAIR_ELEMENTS;
-
 pub fn elements(pad: Zp, randomness: CommitmentRandomness) -> [Element; PAIR_ELEMENTS] {
     concat([Element::from_int(pad)], pack_randomness(randomness))
 }

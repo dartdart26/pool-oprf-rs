@@ -4,20 +4,19 @@
 //! m = Commit(Domain::MaskSum, r̃^0_Σ .. r̃^{RUNS_PER_EVALUATION-1}_Σ, randomness)
 //! ```
 //!
-//! One row holds all of (M) and every row is the same. Domain, values and
-//! rest are Poseidon2's input.
+//! One row holds all of (M) and every row is the same. Domain, sums,
+//! random and rest are Poseidon2's input.
 //!
-//! | row      | sums (`RUNS_PER_EVALUATION`) | random (`RANDOMNESS_ELEMENTS`) | domain (1)        | values (`VALUE_ELEMENTS`) | rest  | rounds     |
-//! |----------|------------------------------|--------------------------------|-------------------|---------------------------|-------|------------|
-//! | `0`      | `r̃_Σ` of each run            | `randomness`                   | `Domain::MaskSum` | mask sums, random value   | zeros | end in `m` |
-//! | `1`      | `r̃_Σ` of each run            | `randomness`                   | `Domain::MaskSum` | mask sums, random value   | zeros | end in `m` |
-//! | …        | …                            | …                              | …                 | …                         | …     | …          |
-//! | `ROWS-1` | `r̃_Σ` of each run            | `randomness`                   | `Domain::MaskSum` | mask sums, random value   | zeros | end in `m` |
+//! | row      | domain (1)        | sums (`RUNS_PER_EVALUATION`) | random (`RANDOMNESS_ELEMENTS`) | rest  | rounds     |
+//! |----------|-------------------|------------------------------|--------------------------------|-------|------------|
+//! | `0`      | `Domain::MaskSum` | `r̃_Σ` of each run            | `randomness`                   | zeros | end in `m` |
+//! | `1`      | `Domain::MaskSum` | `r̃_Σ` of each run            | `randomness`                   | zeros | end in `m` |
+//! | …        | …                 | …                            | …                              | …     | …          |
+//! | `ROWS-1` | `Domain::MaskSum` | `r̃_Σ` of each run            | `randomness`                   | zeros | end in `m` |
 //!
 //! Plonky3 checks Poseidon2's rounds itself. We add these rules for (M):
 //!
-//! - the inputs are `Domain::MaskSum`, the mask sums, the random value, then
-//!   zeros
+//! - the input starts with `Domain::MaskSum` and ends in zeros
 //! - the rounds end in `m`
 //!
 //! No rule checks the random value. It is there to hide the `r̃_Σ`, so a
@@ -28,25 +27,20 @@
 //! `r̃_Σ` is the value (T) checked.
 
 use crate::commitments::CommitmentRandomness;
-use crate::plonky3::commitments::mask_sum::{INPUT_ELEMENTS, MaskSumCommitment, elements};
-use crate::plonky3::commitments::{DIGEST_ELEMENTS, RANDOMNESS_ELEMENTS, concat, pack_randomness};
-use crate::plonky3::sponge::{
-    PERMUTATION, PERMUTATION_COLS, eval_sponge, permutations, sponge_trace,
-};
+use crate::plonky3::commitments::DIGEST_ELEMENTS;
+use crate::plonky3::commitments::mask_sum::{MaskSumCommitment, VALUE_ELEMENTS, elements};
+use crate::plonky3::sponge::{PERMUTATION, PERMUTATION_COLS, eval_commitment, sponge_trace};
 use crate::plonky3::{ROWS, Val};
-use core::array;
-use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
-use p3_field::integers::QuotientMap;
+use p3_air::{Air, AirBuilder, BaseAir};
 use p3_matrix::dense::RowMajorMatrix;
 use pool_prf::params::{RUNS_PER_EVALUATION, Zq};
 
-const PERMUTATIONS: usize = permutations(INPUT_ELEMENTS);
-
-/// Where each part of the row starts.
-pub(crate) const R_SIGMA: usize = 0;
+/// Where each part of the row starts. Poseidon2's input is the domain, the
+/// sums, the random value, then zeros.
+const SPONGE: usize = 0;
+pub(crate) const R_SIGMA: usize = SPONGE + 1;
 pub(crate) const RANDOMNESS: usize = R_SIGMA + RUNS_PER_EVALUATION;
-const SPONGE: usize = RANDOMNESS + RANDOMNESS_ELEMENTS;
-pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATIONS * PERMUTATION_COLS;
+pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATION_COLS;
 
 /// The rules for (M).
 pub struct MaskSumAir;
@@ -57,11 +51,7 @@ impl MaskSumAir {
         r_sigma_sum: &[Zq; RUNS_PER_EVALUATION],
         randomness: CommitmentRandomness,
     ) -> Vec<Val> {
-        let sums = r_sigma_sum.iter().map(|&r| Val::from_int(r));
-        let hash = sponge_trace(MaskSumCommitment::input(elements(r_sigma_sum, randomness)));
-        sums.chain(pack_randomness(randomness))
-            .chain(hash)
-            .collect()
+        sponge_trace(MaskSumCommitment::input(elements(r_sigma_sum, randomness)))
     }
 
     /// The table - `ROWS` copies of the row.
@@ -74,14 +64,8 @@ impl MaskSumAir {
 
     /// The rules for (M) on the row, for `m`.
     pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, m: [AB::Expr; DIGEST_ELEMENTS]) {
-        let main = builder.main();
-        let row = main.current_slice();
-        let r_sigma_sum: [AB::Expr; RUNS_PER_EVALUATION] =
-            array::from_fn(|k| row[R_SIGMA + k].into());
-        let randomness: [AB::Expr; RANDOMNESS_ELEMENTS] =
-            array::from_fn(|k| row[RANDOMNESS + k].into());
-        let input = MaskSumCommitment::input(concat(r_sigma_sum, randomness));
-        eval_sponge(builder, SPONGE, input, m);
+        let domain = MaskSumCommitment::domain();
+        eval_commitment(builder, SPONGE, domain, VALUE_ELEMENTS, m);
     }
 }
 
@@ -115,7 +99,8 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for MaskSumAir {
 mod tests {
     use super::*;
     use crate::plonky3::commitments::mask_sum::commit;
-    use crate::plonky3::sponge::{last_run, output};
+    use crate::plonky3::sponge::{output, permutation};
+    use core::array;
     use p3_air::check_all_constraints;
     use p3_field::PrimeCharacteristicRing;
     use p3_matrix::Matrix;
@@ -135,7 +120,7 @@ mod tests {
         let trace = MaskSumAir::trace(&r_sigma_sum, randomness);
         let row = trace.row_slice(0).expect("a row");
         assert_eq!(
-            output(last_run(&row[SPONGE..]))[..DIGEST_ELEMENTS],
+            output(permutation(&row[SPONGE..]))[..DIGEST_ELEMENTS],
             commit(&r_sigma_sum, randomness).0
         );
     }

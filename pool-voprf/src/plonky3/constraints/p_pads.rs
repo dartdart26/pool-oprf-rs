@@ -5,21 +5,21 @@
 //! ```
 //!
 //! One row holds one entry `j`. Entry `j` is on row `j`, and again every `Δ`
-//! rows. Domain, values and rest are Poseidon2's input.
+//! rows. Domain, pad, random and rest are Poseidon2's input.
 //!
-//! | row       | pad (1)     | random (`RANDOMNESS_ELEMENTS`) | domain (1)    | values (`PAIR_ELEMENTS`) | rest  | rounds           |
-//! |-----------|-------------|--------------------------------|---------------|--------------------------|-------|------------------|
-//! | `0`       | `pad_0`     | `randomness_0`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_0`     |
-//! | `1`       | `pad_1`     | `randomness_1`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_1`     |
-//! | …         | …           | …                              | …             | …                        | …     | …                |
-//! | `Δ-1`     | `pad_{Δ-1}` | `randomness_{Δ-1}`             | `Domain::Pad` | pad, random value        | zeros | end in `d_{Δ-1}` |
-//! | `Δ`       | `pad_0`     | `randomness_0`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_0`     |
-//! | …         | …           | …                              | …             | …                        | …     | …                |
-//! | `Δ·k + j` | `pad_j`     | `randomness_j`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_j`     |
+//! | row       | domain (1)    | pad (1)     | random (`RANDOMNESS_ELEMENTS`) | rest  | rounds           |
+//! |-----------|---------------|-------------|--------------------------------|-------|------------------|
+//! | `0`       | `Domain::Pad` | `pad_0`     | `randomness_0`                 | zeros | end in `d_0`     |
+//! | `1`       | `Domain::Pad` | `pad_1`     | `randomness_1`                 | zeros | end in `d_1`     |
+//! | …         | …             | …           | …                              | …     | …                |
+//! | `Δ-1`     | `Domain::Pad` | `pad_{Δ-1}` | `randomness_{Δ-1}`             | zeros | end in `d_{Δ-1}` |
+//! | `Δ`       | `Domain::Pad` | `pad_0`     | `randomness_0`                 | zeros | end in `d_0`     |
+//! | …         | …             | …           | …                              | …     | …                |
+//! | `Δ·k + j` | `Domain::Pad` | `pad_j`     | `randomness_j`                 | zeros | end in `d_j`     |
 //!
 //! Plonky3 checks Poseidon2's rounds itself. We add these rules for (P):
 //!
-//! - the inputs are `Domain::Pad`, `pad_j`, the random value, then zeros
+//! - the input starts with `Domain::Pad` and ends in zeros
 //! - the rounds end in the `d_j` of the row's entry
 //!
 //! The rules are the same on every row. They pick the row's `d_j` with the
@@ -37,27 +37,22 @@
 //! commits to, and the client checks `d_{b′}` against its own pad.
 
 use crate::commitments::CommitmentRandomness;
-use crate::plonky3::commitments::pad::{INPUT_ELEMENTS, PadCommitment, elements};
-use crate::plonky3::commitments::{DIGEST_ELEMENTS, RANDOMNESS_ELEMENTS, concat, pack_randomness};
+use crate::plonky3::commitments::pad::{PadCommitment, elements};
+use crate::plonky3::commitments::{DIGEST_ELEMENTS, PAIR_ELEMENTS};
 use crate::plonky3::selectors::{select, selectors};
-use crate::plonky3::sponge::{
-    PERMUTATION, PERMUTATION_COLS, eval_sponge, permutations, sponge_trace,
-};
+use crate::plonky3::sponge::{PERMUTATION, PERMUTATION_COLS, eval_commitment, sponge_trace};
 use crate::plonky3::{ROWS, Val};
 use core::array;
-use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
-use p3_field::integers::QuotientMap;
+use p3_air::{Air, AirBuilder, BaseAir};
 use p3_matrix::dense::RowMajorMatrix;
 use pool_prf::params::{DELTA, Zp};
 use std::borrow::Cow;
 
-const PERMUTATIONS: usize = permutations(INPUT_ELEMENTS);
-
-/// Where each part of the row starts.
-pub(crate) const PAD: usize = 0;
-const RANDOMNESS: usize = PAD + 1;
-const SPONGE: usize = RANDOMNESS + RANDOMNESS_ELEMENTS;
-pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATIONS * PERMUTATION_COLS;
+/// Where each part of the row starts. Poseidon2's input is the domain, the
+/// pad, the random value, then zeros.
+const SPONGE: usize = 0;
+pub(crate) const PAD: usize = SPONGE + 1;
+pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATION_COLS;
 /// `d_0 .. d_{Δ-1}`.
 pub(crate) const NUM_PUBLIC_VALUES: usize = DELTA * DIGEST_ELEMENTS;
 /// `s_0 .. s_{Δ-1}`.
@@ -72,8 +67,6 @@ impl PadsAir {
     pub fn entries(pads: &[Zp; DELTA], randomness: &[CommitmentRandomness; DELTA]) -> Vec<Val> {
         let mut rows = Vec::new();
         for (&pad, &randomness) in pads.iter().zip(randomness) {
-            rows.push(Val::from_int(pad));
-            rows.extend(pack_randomness(randomness));
             let input = PadCommitment::input(elements(pad, randomness));
             rows.extend(sponge_trace(input));
         }
@@ -92,13 +85,8 @@ impl PadsAir {
     /// The rules for (P) on the row: its pad and random value hash to
     /// `hash`.
     pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, hash: [AB::Expr; DIGEST_ELEMENTS]) {
-        let main = builder.main();
-        let row = main.current_slice();
-        let pad: AB::Expr = row[PAD].into();
-        let randomness: [AB::Expr; RANDOMNESS_ELEMENTS] =
-            array::from_fn(|k| row[RANDOMNESS + k].into());
-        let input = PadCommitment::input(concat([pad], randomness));
-        eval_sponge(builder, SPONGE, input, hash);
+        let domain = PadCommitment::domain();
+        eval_commitment(builder, SPONGE, domain, PAIR_ELEMENTS, hash);
     }
 }
 

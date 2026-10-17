@@ -76,6 +76,12 @@ impl<const DOMAIN: u32, const LEN: usize> Commitment<DOMAIN, LEN> {
     }
 
     pub fn input<T: From<Element>>(elements: [T; LEN]) -> impl Iterator<Item = T> {
+        const {
+            assert!(
+                LEN < RATE,
+                "the domain and the values fit in one permutation"
+            )
+        };
         iter::once(Self::domain().into()).chain(elements)
     }
 
