@@ -1,5 +1,5 @@
-//! `m` is a [`MaskSumCommitment`] to the `r̃_Σ` of every run of an
-//! evaluation and a random value.
+//! `m^v` is a [`MaskSumCommitment`] to the `r̃^{v, k}_Σ` of every run `k` and a
+//! random value.
 
 use crate::commitments::{CommitmentRandomness, MaskSumsInput};
 use crate::hash_domains::Domain;
@@ -9,13 +9,10 @@ use crate::plonky3::commitments::{
 use p3_field::integers::QuotientMap;
 use pool_prf::params::{RUNS_PER_EVALUATION, Zq};
 
-/// The `r̃_Σ` of each run, then the random value.
+/// The `r̃^{v, k}_Σ` of each run `k`, then the random value.
 pub const VALUE_ELEMENTS: usize = RUNS_PER_EVALUATION + RANDOMNESS_ELEMENTS;
 
 pub type MaskSumCommitment = Commitment<{ Domain::MaskSum as u32 }, VALUE_ELEMENTS>;
-
-/// Domain + the values.
-pub const INPUT_ELEMENTS: usize = 1 + VALUE_ELEMENTS;
 
 pub fn elements(
     r_sigma_sum: &[Zq; RUNS_PER_EVALUATION],

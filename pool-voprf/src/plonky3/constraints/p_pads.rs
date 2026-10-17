@@ -1,64 +1,59 @@
 //! Constraint (P) on Plonky3:
 //!
 //! ```text
-//! d_j = Commit(Domain::Pad, r′_j, randomness_j),   j = 0 .. Δ-1
+//! d^{v, k}_j = Commit(Domain::Pad, r′^{v, k}_j, ot_block′^{v, k}_j),   j = 0 .. Δ-1
 //! ```
 //!
 //! One row holds one entry `j`. Entry `j` is on row `j`, and again every `Δ`
-//! rows. Domain, values and rest are Poseidon2's input.
+//! rows. Domain, pad, random and rest are Poseidon2's input.
 //!
-//! | row       | pad (1)     | random (`RANDOMNESS_ELEMENTS`) | domain (1)    | values (`PAIR_ELEMENTS`) | rest  | rounds           |
-//! |-----------|-------------|--------------------------------|---------------|--------------------------|-------|------------------|
-//! | `0`       | `pad_0`     | `randomness_0`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_0`     |
-//! | `1`       | `pad_1`     | `randomness_1`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_1`     |
-//! | …         | …           | …                              | …             | …                        | …     | …                |
-//! | `Δ-1`     | `pad_{Δ-1}` | `randomness_{Δ-1}`             | `Domain::Pad` | pad, random value        | zeros | end in `d_{Δ-1}` |
-//! | `Δ`       | `pad_0`     | `randomness_0`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_0`     |
-//! | …         | …           | …                              | …             | …                        | …     | …                |
-//! | `Δ·k + j` | `pad_j`     | `randomness_j`                 | `Domain::Pad` | pad, random value        | zeros | end in `d_j`     |
+//! | row       | domain (1)    | pad (1)     | random (`RANDOMNESS_ELEMENTS`) | rest  | rounds                  |
+//! |-----------|---------------|-------------|--------------------------------|-------|-------------------------|
+//! | `0`       | `Domain::Pad` | `pad_0`     | `ot_block′^{v, k}_0`           | zeros | end in `d^{v, k}_0`     |
+//! | `1`       | `Domain::Pad` | `pad_1`     | `ot_block′^{v, k}_1`           | zeros | end in `d^{v, k}_1`     |
+//! | …         | …             | …           | …                              | …     | …                       |
+//! | `Δ-1`     | `Domain::Pad` | `pad_{Δ-1}` | `ot_block′^{v, k}_{Δ-1}`       | zeros | end in `d^{v, k}_{Δ-1}` |
+//! | `Δ`       | `Domain::Pad` | `pad_0`     | `ot_block′^{v, k}_0`           | zeros | end in `d^{v, k}_0`     |
+//! | …         | …             | …           | …                              | …     | …                       |
+//! | `Δ·k + j` | `Domain::Pad` | `pad_j`     | `ot_block′^{v, k}_j`           | zeros | end in `d^{v, k}_j`     |
 //!
 //! Plonky3 checks Poseidon2's rounds itself. We add these rules for (P):
 //!
-//! - the inputs are `Domain::Pad`, `pad_j`, the random value, then zeros
-//! - the rounds end in the `d_j` of the row's entry
+//! - the input starts with `Domain::Pad` and ends in zeros
+//! - the rounds end in the `d^{v, k}_j` of the row's entry
 //!
-//! The rules are the same on every row. They pick the row's `d_j` with the
-//! selectors, see [`selectors`]:
+//! The rules are the same on every row. They pick the row's `d^{v, k}_j` with
+//! the selectors, see [`selectors`]:
 //!
 //! ```text
-//! hash = s_0·d_0 + s_1·d_1 + … + s_{Δ-1}·d_{Δ-1}
+//! hash = s_0·d^{v, k}_0 + s_1·d^{v, k}_1 + … + s_{Δ-1}·d^{v, k}_{Δ-1}
 //! ```
 //!
 //! On the rows of entry `j`, `s_j` is 1 and the others are 0, so the right
-//! side is `d_j`.
+//! side is `d^{v, k}_j`.
 //!
-//! No rule checks `pad_j` or the random value. The random value hides
-//! `pad_j`, so a bad one only harms the server. `pad_j` is whatever `d`
-//! commits to, and the client checks `d_{b′}` against its own pad.
+//! No rule checks `pad_j` or the random value. The random value hides `pad_j`,
+//! so a bad one only harms the server. `pad_j` is whatever `d^{v, k}_j` commits
+//! to, and the client checks `d^{v, k}_{b′^{v, k}}` against its own pad.
 
 use crate::commitments::CommitmentRandomness;
-use crate::plonky3::commitments::pad::{INPUT_ELEMENTS, PadCommitment, elements};
-use crate::plonky3::commitments::{DIGEST_ELEMENTS, RANDOMNESS_ELEMENTS, concat, pack_randomness};
+use crate::plonky3::commitments::pad::{PadCommitment, elements};
+use crate::plonky3::commitments::{DIGEST_ELEMENTS, PAIR_ELEMENTS};
 use crate::plonky3::selectors::{select, selectors};
-use crate::plonky3::sponge::{
-    PERMUTATION, PERMUTATION_COLS, eval_sponge, permutations, sponge_trace,
-};
+use crate::plonky3::sponge::{PERMUTATION, PERMUTATION_COLS, eval_commitment, sponge_trace};
 use crate::plonky3::{ROWS, Val};
 use core::array;
-use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
-use p3_field::integers::QuotientMap;
+use p3_air::{Air, AirBuilder, BaseAir};
 use p3_matrix::dense::RowMajorMatrix;
 use pool_prf::params::{DELTA, Zp};
 use std::borrow::Cow;
 
-const PERMUTATIONS: usize = permutations(INPUT_ELEMENTS);
-
-/// Where each part of the row starts.
-pub(crate) const PAD: usize = 0;
-const RANDOMNESS: usize = PAD + 1;
-const SPONGE: usize = RANDOMNESS + RANDOMNESS_ELEMENTS;
-pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATIONS * PERMUTATION_COLS;
-/// `d_0 .. d_{Δ-1}`.
+/// Where each part of the row starts. Poseidon2's input is the domain, the
+/// pad, the random value, then zeros.
+const SPONGE: usize = 0;
+pub(crate) const PAD: usize = SPONGE + 1;
+pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATION_COLS;
+/// `d^{v, k}_0 .. d^{v, k}_{Δ-1}`.
 pub(crate) const NUM_PUBLIC_VALUES: usize = DELTA * DIGEST_ELEMENTS;
 /// `s_0 .. s_{Δ-1}`.
 const NUM_PERIODIC_COLUMNS: usize = DELTA;
@@ -72,8 +67,6 @@ impl PadsAir {
     pub fn entries(pads: &[Zp; DELTA], randomness: &[CommitmentRandomness; DELTA]) -> Vec<Val> {
         let mut rows = Vec::new();
         for (&pad, &randomness) in pads.iter().zip(randomness) {
-            rows.push(Val::from_int(pad));
-            rows.extend(pack_randomness(randomness));
             let input = PadCommitment::input(elements(pad, randomness));
             rows.extend(sponge_trace(input));
         }
@@ -92,13 +85,8 @@ impl PadsAir {
     /// The rules for (P) on the row: its pad and random value hash to
     /// `hash`.
     pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, hash: [AB::Expr; DIGEST_ELEMENTS]) {
-        let main = builder.main();
-        let row = main.current_slice();
-        let pad: AB::Expr = row[PAD].into();
-        let randomness: [AB::Expr; RANDOMNESS_ELEMENTS] =
-            array::from_fn(|k| row[RANDOMNESS + k].into());
-        let input = PadCommitment::input(concat([pad], randomness));
-        eval_sponge(builder, SPONGE, input, hash);
+        let domain = PadCommitment::domain();
+        eval_commitment(builder, SPONGE, domain, PAIR_ELEMENTS, hash);
     }
 }
 
@@ -130,7 +118,8 @@ impl BaseAir<Val> for PadsAir {
 }
 
 impl<AB: AirBuilder<F = Val>> Air<AB> for PadsAir {
-    // Checks that the commitment to `pad_j` in the table equals public value `d_j`.
+    // Checks that the commitment to `pad_j` in the table equals public value
+    // `d^{v, k}_j`.
     fn eval(&self, builder: &mut AB) {
         let public_values = builder.public_values();
         let d: [[AB::PublicVar; DIGEST_ELEMENTS]; DELTA] = array::from_fn(|j| {
@@ -143,7 +132,7 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for PadsAir {
 
         // The `hash` of this row's entry:
         //
-        //     hash = s_0·d_0 + s_1·d_1 + … + s_{Δ-1}·d_{Δ-1}
+        //     hash = s_0·d^{v, k}_0 + s_1·d^{v, k}_1 + … + s_{Δ-1}·d^{v, k}_{Δ-1}
         //
         // A hash is `DIGEST_ELEMENTS` elements, so the sum is taken element by
         // element.
@@ -155,7 +144,7 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for PadsAir {
     }
 }
 
-/// `d_0 .. d_{Δ-1}`.
+/// `d^{v, k}_0 .. d^{v, k}_{Δ-1}`.
 pub fn public_values(d: &[PadCommitment; DELTA]) -> Vec<Val> {
     d.iter().flat_map(|d_j| d_j.0).collect()
 }
