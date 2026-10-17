@@ -1,39 +1,42 @@
 //! Constraint (A) on Plonky3:
 //!
 //! ```text
-//! ã_Σ = Σ_i sk_i·e_i + r̃_Σ   mod q
+//! ã^{v, k}_Σ = Σ_i sk_i·e^{v, k}_i + r̃^{v, k}_Σ   mod q
 //! ```
 //!
-//! (A) takes `sk` and `r̃_Σ` as given - (K) and (M) pin them down.
+//! (A) takes `sk` and `r̃^{v, k}_Σ` as given - (K) and (M) pin them down.
 //!
-//! `e` is public.
+//! `e^{v, k}` is public.
 //!
 //! # Layout
 //!
 //! One row holds all of (A) and every row is the same. The bits are lowest
 //! first.
 //!
-//! | row      | key (`n`)          | mask sum (1) | `ã_Σ` (`LOG_Q`) | quotient (`QUOTIENT_BITS`) |
-//! |----------|--------------------|--------------|-----------------|----------------------------|
-//! | `0`      | `sk_0 .. sk_{n-1}` | `r̃_Σ`        | bits            | bits                       |
-//! | `1`      | `sk_0 .. sk_{n-1}` | `r̃_Σ`        | bits            | bits                       |
-//! | …        | …                  | …            | …               | …                          |
-//! | `ROWS-1` | `sk_0 .. sk_{n-1}` | `r̃_Σ`        | bits            | bits                       |
+//! | row      | key (`n`)          | mask sum (1) | `ã^{v, k}_Σ` (`LOG_Q`) | quotient (`QUOTIENT_BITS`) |
+//! |----------|--------------------|--------------|------------------------|----------------------------|
+//! | `0`      | `sk_0 .. sk_{n-1}` | `r̃^{v, k}_Σ` | bits                   | bits                       |
+//! | `1`      | `sk_0 .. sk_{n-1}` | `r̃^{v, k}_Σ` | bits                   | bits                       |
+//! | …        | …                  | …            | …                      | …                          |
+//! | `ROWS-1` | `sk_0 .. sk_{n-1}` | `r̃^{v, k}_Σ` | bits                   | bits                       |
 //!
-//! # 1. `sk_i·e_i`
+//! # 1. `sk_i·e^{v, k}_i`
 //!
-//! Let's call `S = Σ_i sk_i·e_i + r̃_Σ`, without the modulo operation.
+//! Let's call `S = Σ_i sk_i·e^{v, k}_i + r̃^{v, k}_Σ`, without the modulo
+//! operation.
 //!
 //! # 2. The sum mod `q`
 //!
-//! The result we want is `ã_Σ = S mod q`. To show that `ã_Σ` is the result,
-//! we use the definition of mod: `ã_Σ ≡ S mod q` when `S = ã_Σ + q·quotient`,
-//! where `quotient` is a whole number. The rule checks this equation.
-//! `ã_Σ` is `LOG_Q` bit columns, so it is below `q`.
+//! The result we want is `ã^{v, k}_Σ = S mod q`. To show that `ã^{v, k}_Σ` is
+//! the result, we use the definition of mod: `ã^{v, k}_Σ ≡ S mod q` when
+//! `S = ã^{v, k}_Σ + q·quotient`, where `quotient` is a whole number. The rule
+//! checks this equation.
+//! `ã^{v, k}_Σ` is `LOG_Q` bit columns, so it is below `q`.
 //!
-//! Let's call the field's prime `Pf`. `S` and `q·quotient + ã_Σ` must stay
-//! below `Pf`, because the rule compares them `mod Pf`.
+//! Let's call the field's prime `Pf`. `S` and `q·quotient + ã^{v, k}_Σ` must
+//! stay below `Pf`, because the rule compares them `mod Pf`.
 
+use crate::plonky3::constraints::common::{KEY_BITS, bits};
 use crate::plonky3::{N_BITS, ROWS, Val};
 use p3_air::utils::pack_bits_le;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
@@ -48,9 +51,8 @@ const A_SIGMA_BITS: usize = LOG_Q as usize;
 /// The quotient is at most `n`.
 const QUOTIENT_BITS: usize = N_BITS;
 
-/// Where each part of the row starts.
-pub(crate) const SK: usize = 0;
-pub(crate) const R_SIGMA: usize = SK + N;
+/// Where each part of the row starts, after the key bits.
+pub(crate) const R_SIGMA: usize = KEY_BITS;
 pub(crate) const A_SIGMA: usize = R_SIGMA + 1;
 pub(crate) const QUOTIENT: usize = A_SIGMA + A_SIGMA_BITS;
 pub(crate) const NUM_COLS: usize = QUOTIENT + QUOTIENT_BITS;
@@ -58,11 +60,6 @@ pub(crate) const NUM_COLS: usize = QUOTIENT + QUOTIENT_BITS;
 /// Both sides of the sum rule are below this.
 const SUM_BOUND: usize = (Q as usize) << QUOTIENT_BITS;
 const _: () = assert!(SUM_BOUND < Val::ORDER_U32 as usize);
-
-/// The lowest `count` bits of `value`, as columns.
-pub(crate) fn bits(value: ZqAccum, count: usize) -> impl Iterator<Item = Val> {
-    (0..count).map(move |k| Val::from_int((value >> k) & 1))
-}
 
 pub struct SumAir;
 
@@ -74,7 +71,7 @@ impl SumAir {
             .zip(e)
             .map(|(&sk_i, &e_i)| if sk_i == 0 { 0 } else { ZqAccum::from(e_i) })
             .sum();
-        // Σ_i sk_i·e_i + r̃_Σ
+        // Σ_i sk_i·e^{v, k}_i + r̃^{v, k}_Σ
         let sum = first_sum + ZqAccum::from(r_sigma_sum);
         let mut row: Vec<Val> = sk.iter().map(|&bit| Val::from_int(bit)).collect();
         row.push(Val::from_int(r_sigma_sum));
@@ -91,7 +88,7 @@ impl SumAir {
     pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, e: [AB::Expr; N]) {
         let main = builder.main();
         let row = main.current_slice();
-        let sk = &row[SK..R_SIGMA];
+        let sk = &row[..KEY_BITS];
         let r_sigma_sum: AB::Expr = row[R_SIGMA].into();
         let a_sigma_bits = &row[A_SIGMA..QUOTIENT];
         let quotient_bits = &row[QUOTIENT..NUM_COLS];
@@ -99,12 +96,12 @@ impl SumAir {
             builder.assert_bool(bit);
         }
 
-        // sk_i·e_i
+        // sk_i·e^{v, k}_i
         let terms = sk.iter().zip(e).map(|(&sk_i, e_i)| sk_i * e_i);
-        // S = Σ_i sk_i·e_i + r̃_Σ
+        // S = Σ_i sk_i·e^{v, k}_i + r̃^{v, k}_Σ
         let s = terms.sum::<AB::Expr>() + r_sigma_sum;
 
-        // S = ã_Σ + q·quotient
+        // S = ã^{v, k}_Σ + q·quotient
         let a_sigma_sum = pack_bits_le::<AB::Expr, _, _>(a_sigma_bits.iter().copied());
         let quotient = pack_bits_le::<AB::Expr, _, _>(quotient_bits.iter().copied());
         builder.assert_eq(s, a_sigma_sum + quotient * Val::from_int(Q));
@@ -150,7 +147,7 @@ mod tests {
         array::from_fn(|_| rng.random_range(0..Q))
     }
 
-    /// A random key, `r̃_Σ` and `e`, from `seed`.
+    /// A random key, `r̃^{v, k}_Σ` and `e^{v, k}`, from `seed`.
     fn random(seed: u64) -> (SecretKey, Zq, [Zq; N]) {
         let mut rng = StdRng::seed_from_u64(seed);
         let sk = SecretKey::random(&mut rng);
@@ -158,8 +155,8 @@ mod tests {
         (sk, r_sigma_sum, vector(&mut rng))
     }
 
-    /// The key, `r̃_Σ` and `e` each zero, their largest and random, in
-    /// every combination.
+    /// The key, `r̃^{v, k}_Σ` and `e^{v, k}` each zero, their largest and
+    /// random, in every combination.
     fn corners() -> Vec<(SecretKey, Zq, [Zq; N])> {
         let mut rng = StdRng::seed_from_u64(1);
         let keys = [
@@ -180,12 +177,12 @@ mod tests {
         corners
     }
 
-    /// Runs the rules over `trace` for `e`.
+    /// Runs the rules over `trace` for `e^{v, k}`.
     fn report(trace: &RowMajorMatrix<Val>, e: &[Zq; N]) -> ConstraintReport {
         check_all_constraints(&SumAir, trace, &public_values(e), None)
     }
 
-    /// `ã_Σ` as the trace holds it, from its bits.
+    /// `ã^{v, k}_Σ` as the trace holds it, from its bits.
     fn a_sigma_sum_of(trace: &RowMajorMatrix<Val>) -> Zq {
         let row = trace.row_slice(0).expect("a row");
         row[A_SIGMA..QUOTIENT]
@@ -203,7 +200,7 @@ mod tests {
         }
     }
 
-    /// The trace holds the `ã_Σ` the server computes.
+    /// The trace holds the `ã^{v, k}_Σ` the server computes.
     #[test]
     fn a_sigma_sum_is_the_servers() {
         for (sk, r_sigma_sum, e) in corners() {
@@ -215,7 +212,7 @@ mod tests {
         }
     }
 
-    /// `e_i` enters the sum only where `sk_i = 1`.
+    /// `e^{v, k}_i` enters the sum only where `sk_i = 1`.
     #[test]
     fn e_i_counts_exactly_where_sk_i_is_set() {
         let (sk, r_sigma_sum, e) = random(2);
@@ -233,7 +230,8 @@ mod tests {
 
     #[test]
     fn a_bit_that_is_not_a_bit_is_refused() {
-        // With `sk = 0` and `r̃_Σ = 2`, `ã_Σ = 2`, whose lowest two bits are 0, 1.
+        // With `sk = 0` and `r̃^{v, k}_Σ = 2`, `ã^{v, k}_Σ = 2`, whose lowest
+        // two bits are 0, 1.
         let sk = SecretKey::from_bits([0; N]).expect("bits");
         let e = [0; N];
         let mut trace = SumAir::trace(&sk, 2, &e);

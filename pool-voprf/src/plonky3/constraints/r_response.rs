@@ -1,49 +1,51 @@
 //! Constraint (R) on Plonky3:
 //!
 //! ```text
-//! y_j = ⌈(ã_Σ - j) mod q⌋ + r′_{(j - b̄′) mod Δ}   mod p,   j = 0 .. Δ-1
+//! y^{v, k}_j = ⌈(ã^{v, k}_Σ - j) mod q⌋ + r′^{v, k}_{(j - b̄′^{v, k}) mod Δ}   mod p,   j = 0 .. Δ-1
 //! ```
 //!
 //! Let's define:
 //!
 //! ```text
-//! t_j   = (ã_Σ - j) mod q
-//! pad_j = r′_{(j - b̄′) mod Δ}
+//! t_j   = (ã^{v, k}_Σ - j) mod q
+//! pad_j = r′^{v, k}_{(j - b̄′^{v, k}) mod Δ}
 //! ```
 //!
-//! (R) checks the arithmetic only. It takes `ã_Σ` and `r′` as given, without
-//! checking that they are in `ℤ_q` and `ℤ_p` - (A) and (P) pin them down.
+//! (R) checks the arithmetic only. It takes `ã^{v, k}_Σ` and `r′^{v, k}` as
+//! given, without checking that they are in `ℤ_q` and `ℤ_p` - (A) and (P) pin
+//! them down.
 //!
 //! # Layout
 //!
 //! One row holds one entry `j`. Entry `j` is on row `j`, and again every `Δ`
 //! rows. The bits are lowest first.
 //!
-//! | row       | `ã_Σ` (1) | `t_j` (`LOG_Q`)   | wrapped (1) | pad (1)     | carry (1) |
-//! |-----------|-----------|-------------------|-------------|-------------|-----------|
-//! | `0`       | `ã_Σ`     | bits of `t_0`     | bit         | `pad_0`     | bit       |
-//! | `1`       | `ã_Σ`     | bits of `t_1`     | bit         | `pad_1`     | bit       |
-//! | …         | …         | …                 | …           | …           | …         |
-//! | `Δ-1`     | `ã_Σ`     | bits of `t_{Δ-1}` | bit         | `pad_{Δ-1}` | bit       |
-//! | `Δ`       | `ã_Σ`     | bits of `t_0`     | bit         | `pad_0`     | bit       |
-//! | …         | …         | …                 | …           | …           | …         |
-//! | `Δ·k + j` | `ã_Σ`     | bits of `t_j`     | bit         | `pad_j`     | bit       |
+//! | row       | `ã^{v, k}_Σ` (1) | `t_j` (`LOG_Q`)   | wrapped (1) | pad (1)     | carry (1) |
+//! |-----------|------------------|-------------------|-------------|-------------|-----------|
+//! | `0`       | `ã^{v, k}_Σ`     | bits of `t_0`     | bit         | `pad_0`     | bit       |
+//! | `1`       | `ã^{v, k}_Σ`     | bits of `t_1`     | bit         | `pad_1`     | bit       |
+//! | …         | …                | …                 | …           | …           | …         |
+//! | `Δ-1`     | `ã^{v, k}_Σ`     | bits of `t_{Δ-1}` | bit         | `pad_{Δ-1}` | bit       |
+//! | `Δ`       | `ã^{v, k}_Σ`     | bits of `t_0`     | bit         | `pad_0`     | bit       |
+//! | …         | …                | …                 | …           | …           | …         |
+//! | `Δ·k + j` | `ã^{v, k}_Σ`     | bits of `t_j`     | bit         | `pad_j`     | bit       |
 //!
-//! `wrapped` is 1 if `ã_Σ - j` was below zero. `carry` is 1 if
+//! `wrapped` is 1 if `ã^{v, k}_Σ - j` was below zero. `carry` is 1 if
 //! `⌈t_j⌋ + pad_j` reached `p`.
 //!
-//! Each row gets its `j` and its `y_j` from the selectors `s_0 .. s_{Δ-1}`,
-//! see [`selectors`]. On the rows of entry `j`, `s_j` is 1 and every other
-//! selector is 0. So multiplying each selector by its entry's number, or by
-//! its entry's `y`, and adding up leaves only entry `j`'s:
+//! Each row gets its `j` and its `y^{v, k}_j` from the selectors
+//! `s_0 .. s_{Δ-1}`, see [`selectors`]. On the rows of entry `j`, `s_j` is 1
+//! and every other selector is 0. So multiplying each selector by its entry's
+//! number, or by its entry's `y^{v, k}_j`, and adding up leaves only entry
+//! `j`'s:
 //!
 //! ```text
-//! j   = 0·s_0   + 1·s_1   + … + (Δ-1)·s_{Δ-1}
-//! y_j = y_0·s_0 + y_1·s_1 + … + y_{Δ-1}·s_{Δ-1}
+//! j          = 0·s_0          + 1·s_1          + … + (Δ-1)·s_{Δ-1}
+//! y^{v, k}_j = y^{v, k}_0·s_0 + y^{v, k}_1·s_1 + … + y^{v, k}_{Δ-1}·s_{Δ-1}
 //! ```
 //!
 //! For example, on a row of entry 5 only `s_5` is 1, so `j = 5·1 = 5` and
-//! `y_j = y_5·1 = y_5`.
+//! `y^{v, k}_j = y^{v, k}_5·1 = y^{v, k}_5`.
 //!
 //! # 1. `t_j` mod `q`
 //!
@@ -52,12 +54,12 @@
 //! is in `ℤ_q`. The rule then computes `t_j` twice and compares:
 //!
 //! ```text
-//! Σ_k 2^k · t_{j,k}  =  ã_Σ - j + q·wrapped
+//! Σ_l 2^l · t_{j,l}  =  ã^{v, k}_Σ - j + q·wrapped
 //! ```
 //!
-//! The left side computes `t_j` from its `LOG_Q` bits, `t_{j,k}` being bit
-//! `k`. The right side computes it from the `ã_Σ` column, with `q` added
-//! back when `ã_Σ - j` went below zero.
+//! The left side computes `t_j` from its `LOG_Q` bits, `t_{j,l}` being bit
+//! `l`. The right side computes it from the `ã^{v, k}_Σ` column, with `q` added
+//! back when `ã^{v, k}_Σ - j` went below zero.
 //!
 //! # 2. Rounding `t_j`, i.e. `⌈t_j⌋`
 //!
@@ -87,14 +89,14 @@
 //! up        = m_{LOG_DELTA-1} · any_lower
 //! ```
 //!
-//! # 3. `y_j` mod `p`
+//! # 3. `y^{v, k}_j` mod `p`
 //!
 //! `⌈t_j⌋` is at most `p` and `pad_j` is below `p`. So their sum is below
 //! `2p` and taking it mod `p` subtracts `p` at most once. `carry` is a bit
 //! that says whether:
 //!
 //! ```text
-//! y_j = ⌈t_j⌋ + pad_j - p·carry
+//! y^{v, k}_j = ⌈t_j⌋ + pad_j - p·carry
 //! ```
 
 use crate::plonky3::selectors::{index, select, selectors};
@@ -118,7 +120,7 @@ const WRAPPED: usize = T + T_BITS;
 pub(crate) const PAD: usize = WRAPPED + 1;
 const CARRY: usize = PAD + 1;
 pub(crate) const NUM_COLS: usize = CARRY + 1;
-/// `y_0 .. y_{Δ-1}`.
+/// `y^{v, k}_0 .. y^{v, k}_{Δ-1}`.
 const NUM_PUBLIC_VALUES: usize = DELTA;
 /// `s_0 .. s_{Δ-1}`.
 const NUM_PERIODIC_COLUMNS: usize = DELTA;
@@ -139,8 +141,8 @@ fn up<AB: AirBuilder>(m: &[AB::Var]) -> AB::Expr {
 pub struct ResponseAir;
 
 impl ResponseAir {
-    /// The `Δ` entries for `ã_Σ`, the pads and `b̄′`, one row each: entry
-    /// `j` on row `j`.
+    /// The `Δ` entries for `ã^{v, k}_Σ`, the pads and `b̄′^{v, k}`, one row
+    /// each: entry `j` on row `j`.
     pub fn entries(a_sigma_sum: Zq, pads: &[Zp; DELTA], b_bar_prime: Zdelta) -> Vec<Val> {
         let mut rows = Vec::with_capacity(DELTA * NUM_COLS);
         for j in 0..DELTA {
@@ -164,7 +166,7 @@ impl ResponseAir {
         RowMajorMatrix::new(entries.repeat(ROWS / DELTA), NUM_COLS)
     }
 
-    /// The rules for (R) on the row, for its entry `j` and `y_j`.
+    /// The rules for (R) on the row, for its entry `j` and `y^{v, k}_j`.
     pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, j: AB::Expr, y_j: AB::Expr) {
         let main = builder.main();
         let row = main.current_slice();
@@ -177,7 +179,7 @@ impl ResponseAir {
         builder.assert_bool(wrapped);
         builder.assert_bool(carry);
 
-        // 1. t_j = ã_Σ - j + q·wrapped
+        // 1. t_j = ã^{v, k}_Σ - j + q·wrapped
         let t = pack_bits_le::<AB::Expr, _, _>(t_bits.iter().copied());
         builder.assert_eq(t, a_sigma_sum - j + wrapped * Val::from_int(Q));
 
@@ -185,7 +187,7 @@ impl ResponseAir {
         let (m, quotient) = t_bits.split_at(LOG_DELTA);
         let rounded = pack_bits_le::<AB::Expr, _, _>(quotient.iter().copied()) + up::<AB>(m);
 
-        // 3. y_j = ⌈t_j⌋ + pad_j - carry·p
+        // 3. y^{v, k}_j = ⌈t_j⌋ + pad_j - carry·p
         builder.assert_eq(rounded + pad - carry * Val::from_int(P), y_j);
     }
 }
@@ -234,7 +236,7 @@ mod tests {
     use rand::rngs::StdRng;
     use rand::{RngExt, SeedableRng};
 
-    /// A random `ã_Σ`, pads and `b̄′`, from `seed`.
+    /// A random `ã^{v, k}_Σ`, pads and `b̄′^{v, k}`, from `seed`.
     fn random(seed: u64) -> (Zq, [Zp; DELTA], Zdelta) {
         let mut rng = StdRng::seed_from_u64(seed);
         let a_sigma_sum = rng.random_range(0..Q);
@@ -243,14 +245,14 @@ mod tests {
         (a_sigma_sum, pads, b_bar_prime)
     }
 
-    /// Runs the rules over `trace` for `y`.
+    /// Runs the rules over `trace` for `y^{v, k}`.
     fn report(trace: &RowMajorMatrix<Val>, y: &[Zp; DELTA]) -> ConstraintReport {
         check_all_constraints(&ResponseAir, trace, &public_values(y), None)
     }
 
     /// An honest trace passes the rules wherever a bit of it flips.
     ///
-    /// `wrapped` flips when `ã_Σ < j` (`ã_Σ` below `Δ`).
+    /// `wrapped` flips when `ã^{v, k}_Σ < j` (`ã^{v, k}_Σ` below `Δ`).
     /// `carry` flips when `⌈t_j⌋ + pad_j` reaches `p`.
     /// `up` flips at every remainder and one row has them all.
     #[test]
@@ -286,8 +288,8 @@ mod tests {
         }
     }
 
-    /// With `ã_Σ = 3`, entry 0 has `t_0 = 3`, whose lowest two bits are 1, 1.
-    /// Writing them as 3, 0 on the rows of entry 0 violates the rule that
+    /// With `ã^{v, k}_Σ = 3`, entry 0 has `t_0 = 3`, whose lowest two bits are
+    /// 1, 1. Writing them as 3, 0 on the rows of entry 0 violates the rule that
     /// columns of `t_0` are bits, namely constraint 0.
     #[test]
     fn a_bit_that_is_not_a_bit_is_refused() {

@@ -2,20 +2,20 @@
 //! computed correctly.
 //!
 //! ```text
-//! y_j = ⌈(ã_Σ - j) mod q⌋ + r′_{(j - b̄′) mod Δ}   mod p,   j = 0 .. Δ-1
+//! y^{v, k}_j = ⌈(ã^{v, k}_Σ - j) mod q⌋ + r′^{v, k}_{(j - b̄′^{v, k}) mod Δ}   mod p,   j = 0 .. Δ-1
 //! ```
 
 use crate::traits::Constraint;
 use pool_prf::params::{DELTA, Q, Zdelta, Zp, Zq};
 
 pub struct Response<'a> {
-    /// `y_0 .. y_{Δ-1}`.
+    /// `y^{v, k}_0 .. y^{v, k}_{Δ-1}`.
     pub y: &'a [Zp; DELTA],
-    /// `b̄′`, in `0 .. Δ-1`.
+    /// `b̄′^{v, k}`, in `0 .. Δ-1`.
     pub b_bar_prime: Zdelta,
-    /// `ã_Σ`: terms summed over all coordinates, mod `q`.
+    /// `ã^{v, k}_Σ`: terms summed over all coordinates, mod `q`.
     pub a_sigma_sum: Zq,
-    /// `r′_0 .. r′_{Δ-1}`.
+    /// `r′^{v, k}_0 .. r′^{v, k}_{Δ-1}`.
     pub pads: &'a [Zp; DELTA],
 }
 

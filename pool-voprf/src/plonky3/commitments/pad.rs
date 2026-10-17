@@ -1,4 +1,5 @@
-//! `d_j` is a [`PadCommitment`] to the pair of `r′_j` and a random value.
+//! `d^{v, k}_j` is a [`PadCommitment`] to the pair of `r′^{v, k}_j` and a
+//! random value.
 
 use crate::commitments::{CommitmentRandomness, PadInput};
 use crate::hash_domains::Domain;
@@ -6,11 +7,8 @@ use crate::plonky3::commitments::{Commitment, Element, PAIR_ELEMENTS, concat, pa
 use p3_field::integers::QuotientMap;
 use pool_prf::params::Zp;
 
-/// `d_j`.
+/// `d^{v, k}_j`.
 pub type PadCommitment = Commitment<{ Domain::Pad as u32 }, PAIR_ELEMENTS>;
-
-/// Domain + the pair.
-pub const INPUT_ELEMENTS: usize = 1 + PAIR_ELEMENTS;
 
 pub fn elements(pad: Zp, randomness: CommitmentRandomness) -> [Element; PAIR_ELEMENTS] {
     concat([Element::from_int(pad)], pack_randomness(randomness))

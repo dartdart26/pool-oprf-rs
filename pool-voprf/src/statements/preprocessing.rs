@@ -26,7 +26,7 @@ pub struct PreprocessingStatement<PK, C, M> {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct EvaluationStatement<C, M> {
-    /// `c_{0, i}` and `c_{1, i}` of each `i`, from the client.
+    /// `c^v_{0, i}` and `c^v_{1, i}` of each `i`, from the client.
     pub c: [[C; 2]; N],
     pub m: M,
 }
@@ -41,9 +41,9 @@ pub struct PreprocessingWitness {
 
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct EvaluationWitness {
-    /// `r^k_{b_i, i}` of each `i` and run `k`.
+    /// `r^{v, k}_{b_i, i}` of each `i` and run `k`.
     pub masks: [[Zq; RUNS_PER_EVALUATION]; N],
-    /// `r̃^k_Σ` of each run `k`.
+    /// `r̃^{v, k}_Σ` of each run `k`.
     pub r_sigma_sums: [Zq; RUNS_PER_EVALUATION],
     pub m_randomness: CommitmentRandomness,
 }

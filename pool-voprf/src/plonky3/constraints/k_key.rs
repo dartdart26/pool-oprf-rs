@@ -20,23 +20,21 @@
 //! - the inputs are `Domain::Key`, the key bits packed lowest first, then zeros
 //! - the rounds end in `pk`
 
-use crate::plonky3::commitments::key::{
-    INPUT_ELEMENTS, KeyCommitment, PACKED_KEY_ELEMENTS, elements, pack_key,
-};
+use crate::plonky3::commitments::key::{KeyCommitment, PACKED_KEY_ELEMENTS, elements, pack_key};
 use crate::plonky3::commitments::{BITS_PER_ELEMENT, DIGEST_ELEMENTS};
-use crate::plonky3::sponge::{
-    PERMUTATION, PERMUTATION_COLS, eval_sponge, permutations, sponge_trace,
-};
+use crate::plonky3::constraints::common::KEY_BITS;
+use crate::plonky3::sponge::{PERMUTATION, PERMUTATION_COLS, eval_commitment, sponge_trace};
 use crate::plonky3::{ROWS, Val};
-use core::array;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
 use p3_field::PrimeCharacteristicRing;
 use p3_matrix::dense::RowMajorMatrix;
-use pool_prf::params::N;
 use pool_prf::prf::SecretKey;
 
-const PERMUTATIONS: usize = permutations(INPUT_ELEMENTS);
-pub(crate) const NUM_COLS: usize = N + PERMUTATIONS * PERMUTATION_COLS;
+/// Where each part of the row starts, after the key bits. Poseidon2's input
+/// is the domain, the packed key, then zeros.
+const SPONGE: usize = KEY_BITS;
+const PACKED_KEY: usize = SPONGE + 1;
+pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATION_COLS;
 
 /// The rules for (K). Its public value is `pk`.
 #[derive(Default)]
@@ -60,17 +58,19 @@ impl KeyAir {
     pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, pk: [AB::Expr; DIGEST_ELEMENTS]) {
         let main = builder.main();
         let row = main.current_slice();
-        let bits = &row[..N];
+        let bits = &row[..KEY_BITS];
 
         // Every key bit is 0 or 1.
         for &bit in bits {
             builder.assert_bool(bit);
         }
 
-        // Poseidon2 over the domain and the key bits ends in pk.
-        let elements: [AB::Expr; PACKED_KEY_ELEMENTS] =
-            array::from_fn(|index| packed::<AB>(bits, index));
-        eval_sponge(builder, N, KeyCommitment::input(elements), pk);
+        // Poseidon2's input is the key bits, packed.
+        for index in 0..PACKED_KEY_ELEMENTS {
+            builder.assert_eq(row[PACKED_KEY + index], packed::<AB>(bits, index));
+        }
+        let domain = KeyCommitment::domain();
+        eval_commitment(builder, SPONGE, domain, PACKED_KEY_ELEMENTS, pk);
     }
 }
 
@@ -118,9 +118,10 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for KeyAir {
 mod tests {
     use super::*;
     use crate::plonky3::commitments::key::commit;
-    use crate::plonky3::sponge::{last_run, output};
+    use crate::plonky3::sponge::{output, permutation};
     use p3_air::check_all_constraints;
     use p3_matrix::Matrix;
+    use pool_prf::params::N;
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
@@ -130,7 +131,7 @@ mod tests {
         let trace = KeyAir::trace(&sk);
         let row = trace.row_slice(0).expect("a row");
         assert_eq!(
-            output(last_run(&row[N..]))[..DIGEST_ELEMENTS],
+            output(permutation(&row[SPONGE..]))[..DIGEST_ELEMENTS],
             commit(&sk).0
         );
     }

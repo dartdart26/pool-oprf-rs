@@ -2,9 +2,9 @@
 //!
 //! Its constraints are (K), (A), (R), (M) and (P).
 //!
-//! An online response is one evaluation, i.e. `RUNS_PER_EVALUATION` runs of
-//! the protocol, one per output element. The secret key is the same in every
-//! run, so (K) is in the statement once. `m` commits to the `r̃_Σ` of every
+//! An online response is one evaluation, i.e. `RUNS_PER_EVALUATION` runs of the
+//! protocol, one per output element. The secret key is the same in every run,
+//! so (K) is in the statement once. `m^v` commits to the `r̃^{v, k}_Σ` of every
 //! run at once, so (M) is in the statement once too. (P), (A) and (R) are per
 //! run.
 
@@ -29,13 +29,13 @@ pub struct OnlineStatement<PK, M, D> {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct RunStatement<D> {
-    /// `d_0 .. d_{Δ-1}`, the server's commitments to its pads
+    /// `d^{v, k}_0 .. d^{v, k}_{Δ-1}`, the server's commitments to its pads
     pub d: [D; DELTA],
-    /// `e_1 .. e_n`, from the client's request
+    /// `e^{v, k}_1 .. e^{v, k}_n`, from the client's request
     pub e: [Zq; N],
-    /// `b̄′`, from the client's request
+    /// `b̄′^{v, k}`, from the client's request
     pub b_bar_prime: Zdelta,
-    /// `y_0 .. y_{Δ-1}`
+    /// `y^{v, k}_0 .. y^{v, k}_{Δ-1}`
     pub y: [Zp; DELTA],
 }
 
@@ -48,9 +48,9 @@ pub struct OnlineWitness {
 
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct RunWitness {
-    /// `r̃_Σ`.
+    /// `r̃^{v, k}_Σ`.
     pub r_sigma_sum: Zq,
-    /// `r′_0 .. r′_{Δ-1}`.
+    /// `r′^{v, k}_0 .. r′^{v, k}_{Δ-1}`.
     pub pads: [Zp; DELTA],
     pub d_randomness: [CommitmentRandomness; DELTA],
 }
