@@ -5,15 +5,18 @@
 //!
 //!  - **One evaluation is `H_ROWS` base runs.** A base run of the paper's
 //!    protocol produces a single ℤ_p element, while the PRF output is a whole
-//!    row vector, so every algorithm here runs the single-row version
-//!    `H_ROWS` times over `H_ROWS` consecutive slots. A [`ClientState`] with
-//!    τ slots therefore supports τ / `H_ROWS` evaluations.
+//!    row vector, so every algorithm here does the single-row version once
+//!    on each of `H_ROWS` consecutive runs. A [`ClientState`] with
+//!    τ runs therefore supports τ / `H_ROWS` evaluations.
 //!  - **One message may carry several evaluations.** Batching is not in the
 //!    paper, but a caller with a set to evaluate (a PSI, say) would otherwise
 //!    pay one round trip per element and lose the round-optimality the design
 //!    is built for.
 
 use crate::preprocessing::{ClientState, ServerState, Uid, tau_for};
+use crate::voprf::{
+    MAX_VOPRF_BATCH_EVALUATIONS, OnlineStatement, Proof, ProveError, VerifyError, verify_online,
+};
 use pool_prf::hash::{ZqMatrix, hash_to_zq_matrix};
 use pool_prf::modular::{reduce_delta, reduce_q, sub_delta, sub_p};
 use pool_prf::params::{DELTA, DELTA_ZQ, H_ROWS, N, OUTPUT_ELEMENTS, Q, Zdelta, Zp, Zq, ZqAccum};
@@ -30,7 +33,7 @@ pub const MAX_BATCH_EVALUATIONS: usize = 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RequestError {
-    #[error("preprocessing exhausted: a request needs {needed} slots, only {have} left")]
+    #[error("preprocessing exhausted: a request needs {needed} runs, only {have} left")]
     Exhausted { needed: usize, have: usize },
     #[error("tag is {len} bytes, the maximum is {MAX_TAG_LEN}")]
     TagTooLong { len: usize },
@@ -38,16 +41,20 @@ pub enum RequestError {
     EmptyBatch,
     #[error("batch of {len} evaluations, the maximum is {MAX_BATCH_EVALUATIONS}")]
     BatchTooLarge { len: usize },
+    #[error("VOPRF batch of {len} evaluations, the maximum is {MAX_VOPRF_BATCH_EVALUATIONS}")]
+    VoprfBatchTooLarge { len: usize },
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlindEvalError {
     #[error("no preprocessing state for session {uid:?}")]
     UnknownSession { uid: Uid },
-    #[error("preprocessing exhausted: a request needs {needed} slots, only {have} left")]
+    #[error("preprocessing exhausted: a request needs {needed} runs, only {have} left")]
     Exhausted { needed: usize, have: usize },
     #[error("malformed request: {0}")]
     Malformed(&'static str),
+    #[error("proving the response failed")]
+    Prove(#[from] ProveError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -56,10 +63,12 @@ pub enum FinalizeError {
     SessionMismatch { want: Uid, got: Uid },
     #[error("malformed response: {0}")]
     Malformed(&'static str),
-    #[error("response row {row} is for slot {got}, this request used slot {want}")]
+    #[error("response row {row} is for run {got}, this request used run {want}")]
     CounterMismatch { row: usize, want: u64, got: u64 },
     #[error("this request was a batch of {len} evaluations; use finalize_batch")]
     NotSingle { len: usize },
+    #[error("the response proof does not verify")]
+    Verify(#[from] VerifyError),
 }
 
 /// One row of a request. Figure 4's `Request` is the single-row protocol and
@@ -98,21 +107,34 @@ impl RequestMessage {
 /// which [`ResponseMessage`] carries once for all the rows.
 ///
 /// `ctr` stays per row, unlike the request's, because each row spent its own
-/// slot.
+/// run.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct RowResponse {
     /// `y_i = ⌈(ã_Σ - i) mod q⌋_{q,p} + r′_{(i - b̄′) mod Δ, ctr} mod p`,
     /// for `i` in `[0, Δ)`.
     pub(crate) y: [Zp; DELTA],
-    /// The preprocessing slot this row consumed.
+    /// The preprocessing run this row consumed.
     pub(crate) ctr: u64,
 }
 
 /// The response message the server sends back (`rep` in Figure 4).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ResponseMessage {
     pub(crate) uid: Uid,
     pub(crate) rows: Vec<RowResponse>,
+    /// `π_online` of each evaluation, if a VOPRF.
+    pub(crate) proofs: Vec<Proof>,
+}
+
+/// A proof is not printed, only how many there are.
+impl std::fmt::Debug for ResponseMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResponseMessage")
+            .field("uid", &self.uid)
+            .field("rows", &self.rows)
+            .field("proofs", &self.proofs.len())
+            .finish()
+    }
 }
 
 impl ResponseMessage {
@@ -156,6 +178,8 @@ impl Zeroize for RowFinalizeState {
 pub struct FinalizeState {
     pub(crate) uid: Uid,
     pub(crate) rows: Vec<RowFinalizeState>,
+    /// If a VOPRF, the online statement of each evaluation.
+    pub(crate) voprf: Option<Vec<OnlineStatement>>,
 }
 
 impl Zeroize for FinalizeState {
@@ -193,24 +217,31 @@ pub fn request_batch<T: AsRef<[u8]>>(
     if inputs.len() > MAX_BATCH_EVALUATIONS {
         return Err(RequestError::BatchTooLarge { len: inputs.len() });
     }
-    let needed_slots = tau_for(inputs.len());
-    let have_slots = state.remaining_slots();
-    if have_slots < needed_slots {
+    if state.voprf().is_some() && inputs.len() > MAX_VOPRF_BATCH_EVALUATIONS {
+        return Err(RequestError::VoprfBatchTooLarge { len: inputs.len() });
+    }
+    let needed_runs = tau_for(inputs.len());
+    let have_runs = state.remaining_runs();
+    if have_runs < needed_runs {
         return Err(RequestError::Exhausted {
-            needed: needed_slots,
-            have: have_slots,
+            needed: needed_runs,
+            have: have_runs,
         });
     }
 
     let uid = *state.uid();
-    let mut rows = Vec::with_capacity(needed_slots);
-    let mut fin_rows = Vec::with_capacity(needed_slots);
+    let mut rows = Vec::with_capacity(needed_runs);
+    let mut fin_rows = Vec::with_capacity(needed_runs);
+    let mut statements = Vec::new();
     for input in inputs {
         let m = hash_to_zq_matrix(tag, input.as_ref());
-        let first_slot = state
-            .next_slots(H_ROWS)
-            .expect("have_slots >= needed_slots checked above");
-        request_evaluation(state, first_slot, &m, &mut rows, &mut fin_rows);
+        let first_run = state
+            .next_runs(H_ROWS)
+            .expect("have_runs >= needed_runs checked above");
+        request_evaluation(state, first_run, &m, &mut rows, &mut fin_rows);
+        if let Some(voprf) = state.voprf() {
+            statements.push(voprf.online_statement(first_run, &rows[rows.len() - H_ROWS..]));
+        }
     }
 
     Ok((
@@ -222,6 +253,7 @@ pub fn request_batch<T: AsRef<[u8]>>(
         FinalizeState {
             uid,
             rows: fin_rows,
+            voprf: state.voprf().map(|_| statements),
         },
     ))
 }
@@ -236,11 +268,11 @@ pub fn request(
     request_batch(state, tag, &[x])
 }
 
-/// The `H_ROWS` base runs of Figure 4's Request for one evaluation,
-/// on slots `first_slot .. first_slot + H_ROWS`.
+/// The `H_ROWS` base runs of Figure 4's Request for one evaluation, runs
+/// `first_run .. first_run + H_ROWS`.
 fn request_evaluation(
     state: &ClientState,
-    first_slot: u64,
+    first_run: u64,
     m: &ZqMatrix,
     rows: &mut Vec<RowRequest>,
     fin_rows: &mut Vec<RowFinalizeState>,
@@ -251,8 +283,8 @@ fn request_evaluation(
 
     for i in 0..N {
         // H_ROWS masks each.
-        let r_bhats = state.r_bhat(i, first_slot);
-        let r_not_bhats = state.r_not_bhat(i, first_slot);
+        let r_bhats = state.r_bhat(i, first_run);
+        let r_not_bhats = state.r_not_bhat(i, first_run);
 
         for k in 0..H_ROWS {
             let r_bhat = ZqAccum::from(r_bhats[k]);
@@ -263,7 +295,7 @@ fn request_evaluation(
     }
 
     for (k, e_k) in e.into_iter().enumerate() {
-        let ctr = first_slot + k as u64;
+        let ctr = first_run + k as u64;
         let r_sigma = reduce_q(r_sigma_acc[k]);
 
         let rc = state.r_c(ctr); // (b′_ctr, r′_{b′_ctr})
@@ -303,6 +335,11 @@ pub fn blind_eval(
             "batch is larger than MAX_BATCH_EVALUATIONS",
         ));
     }
+    if state.voprf().is_some() && req.evaluations() > MAX_VOPRF_BATCH_EVALUATIONS {
+        return Err(BlindEvalError::Malformed(
+            "batch is larger than MAX_VOPRF_BATCH_EVALUATIONS",
+        ));
+    }
 
     for row in &req.rows {
         if row.e.iter().any(|&e| e >= Q) {
@@ -313,51 +350,60 @@ pub fn blind_eval(
         }
     }
 
-    let needed_slots = req.rows.len();
-    let have_slots = state.remaining_slots();
-    if have_slots < needed_slots {
+    let needed_runs = req.rows.len();
+    let have_runs = state.remaining_runs();
+    if have_runs < needed_runs {
         return Err(BlindEvalError::Exhausted {
-            needed: needed_slots,
-            have: have_slots,
+            needed: needed_runs,
+            have: have_runs,
         });
     }
 
-    let mut rows = Vec::with_capacity(needed_slots);
+    let mut rows = Vec::with_capacity(needed_runs);
+    let mut proofs = Vec::new();
     for eval in req.rows.chunks_exact(H_ROWS) {
-        let first_slot = state
-            .next_slots(H_ROWS)
-            .expect("have_slots >= needed_slots checked above");
-        blind_eval_one(state, sk, eval, first_slot, &mut rows);
+        let first_run = state
+            .next_runs(H_ROWS)
+            .expect("have_runs >= needed_runs checked above");
+        let r_sigma_sums = blind_eval_one(state, sk, eval, first_run, &mut rows);
+        if let Some(voprf) = state.voprf() {
+            proofs.push(voprf.prove_online(sk, first_run, eval, &r_sigma_sums)?);
+        }
     }
 
     Ok(ResponseMessage {
         uid: *state.uid(),
         rows,
+        proofs,
     })
 }
 
-/// The `H_ROWS` base runs of Figure 4's BlindEval for one evaluation, on slots
-/// `first_slot .. first_slot + H_ROWS`, appended to `out`.
+/// The `H_ROWS` base runs of Figure 4's BlindEval for one evaluation, runs
+/// `first_run .. first_run + H_ROWS`, appended to `out`. Returns `r̃_Σ` of
+/// each run.
 fn blind_eval_one(
     state: &ServerState,
     sk: &SecretKey,
     reqs: &[RowRequest],
-    first_slot: u64,
+    first_run: u64,
     out: &mut Vec<RowResponse>,
-) {
+) -> [Zq; H_ROWS] {
     assert_eq!(reqs.len(), H_ROWS, "an evaluation is H_ROWS rows");
 
     // r^ctr_{b_i,i}: the H_ROWS masks of coordinate i, one per row.
-    let r: Vec<[Zq; H_ROWS]> = (0..N).map(|i| state.r(i, first_slot)).collect();
+    let r: Vec<[Zq; H_ROWS]> = (0..N).map(|i| state.r(i, first_run)).collect();
 
+    let mut r_sigma_sums = [0 as Zq; H_ROWS];
     for (k, req) in reqs.iter().enumerate() {
-        let ctr = first_slot + k as u64;
+        let ctr = first_run + k as u64;
         let masks: [Zq; N] = std::array::from_fn(|i| r[i][k]);
         let r_sigma_sum = pool_eval::r_sigma_sum(sk, &masks);
         let a_sigma_sum = pool_eval::a_sigma_sum(sk, r_sigma_sum, &req.e);
         let y = pool_eval::respond(a_sigma_sum, state.s_s(ctr), req.b_bar_prime);
         out.push(RowResponse { y, ctr });
+        r_sigma_sums[k] = r_sigma_sum;
     }
+    r_sigma_sums
 }
 
 /// Figure 4's Finalize.
@@ -379,6 +425,18 @@ pub fn finalize_batch(
         0,
         "expected multiple of H_ROWS rows per evaluation"
     );
+    if let Some(statements) = &state.voprf {
+        if resp.proofs.len() != statements.len() {
+            return Err(FinalizeError::Malformed("not one proof per evaluation"));
+        }
+        let evaluations = statements
+            .iter()
+            .zip(resp.rows.chunks_exact(H_ROWS))
+            .zip(&resp.proofs);
+        for ((statement, rows), proof) in evaluations {
+            verify_online(statement, rows, proof)?;
+        }
+    }
 
     let mut outputs = Vec::with_capacity(state.evaluations());
     for (eval, (fin_rows, resp_rows)) in state
@@ -426,7 +484,8 @@ fn finalize_row(fin: &RowFinalizeState, resp: &RowResponse) -> Zp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::preprocessing::{RcEntry, RsEntry};
+    use crate::preprocessing::{RcEntry, RsEntry, preproc_client_voprf, preproc_server};
+    use crate::testing::verified_key;
     use cryprot_core::Block;
     use pool_prf::modular::reduce_p;
     use pool_prf::params::{LAMBDA_BYTES, ZpAccum};
@@ -451,16 +510,16 @@ mod tests {
                 r_prime: reduce_p(j as ZpAccum),
             })
             .collect();
-        ClientState::new(ot_blocks, bhat, r_c, [7u8; LAMBDA_BYTES])
+        ClientState::new(ot_blocks, bhat, r_c, [7u8; LAMBDA_BYTES], None)
     }
 
     #[test]
     fn request_spends_one_evaluation_and_is_well_formed() {
         let mut state = test_client_state(tau_for(3));
-        let before = state.remaining_slots();
+        let before = state.remaining_runs();
         let (msg, fin) = request(&mut state, TAG, b"input").unwrap();
 
-        assert_eq!(state.remaining_slots(), before - tau_for(1));
+        assert_eq!(state.remaining_runs(), before - tau_for(1));
         assert_eq!(msg.rows.len(), H_ROWS);
         assert_eq!(fin.rows.len(), H_ROWS);
         assert_eq!(msg.uid, fin.uid);
@@ -473,19 +532,19 @@ mod tests {
 
     #[test]
     fn request_errs_when_exhausted_without_consuming() {
-        let needed_slots = tau_for(1);
-        let have_slots = needed_slots - 1;
-        let mut state = test_client_state(have_slots);
+        let needed_runs = tau_for(1);
+        let have_runs = needed_runs - 1;
+        let mut state = test_client_state(have_runs);
 
         let err = request(&mut state, TAG, b"input").unwrap_err();
         let RequestError::Exhausted { needed, have } = err else {
             panic!("expected Exhausted, got {err}");
         };
-        assert_eq!(needed, needed_slots);
-        assert_eq!(have, have_slots);
+        assert_eq!(needed, needed_runs);
+        assert_eq!(have, have_runs);
 
-        // No slots consumed on failure.
-        assert_eq!(state.remaining_slots(), have_slots);
+        // No runs consumed on failure.
+        assert_eq!(state.remaining_runs(), have_runs);
     }
 
     #[test]
@@ -494,7 +553,7 @@ mod tests {
         let tag = vec![0u8; MAX_TAG_LEN + 1];
         let err = request(&mut state, &tag, b"input").unwrap_err();
         assert!(matches!(err, RequestError::TagTooLong { len } if len == MAX_TAG_LEN + 1));
-        assert_eq!(state.remaining_slots(), tau_for(1));
+        assert_eq!(state.remaining_runs(), tau_for(1));
     }
 
     #[test]
@@ -540,8 +599,8 @@ mod tests {
             s_s.push(pads);
         }
         (
-            ClientState::new(ot_blocks, bhat, r_c, uid),
-            ServerState::new(r_s, s_s, uid),
+            ClientState::new(ot_blocks, bhat, r_c, uid, None),
+            ServerState::new(r_s, s_s, uid, None),
         )
     }
 
@@ -572,8 +631,8 @@ mod tests {
                 "{x:?}"
             );
         }
-        assert_eq!(client_state.remaining_slots(), 0);
-        assert_eq!(server_state.remaining_slots(), 0);
+        assert_eq!(client_state.remaining_runs(), 0);
+        assert_eq!(server_state.remaining_runs(), 0);
     }
 
     #[test]
@@ -603,18 +662,18 @@ mod tests {
             assert_eq!(*out, evaluate(&sk, TAG, x), "input {x:?}");
         }
         assert_eq!(batched[0], batched[2]);
-        assert_eq!(batch_client.remaining_slots(), 0);
-        assert_eq!(batch_server.remaining_slots(), 0);
+        assert_eq!(batch_client.remaining_runs(), 0);
+        assert_eq!(batch_server.remaining_runs(), 0);
     }
 
     #[test]
-    fn request_batch_consumes_slots_per_input() {
+    fn request_batch_consumes_runs_per_input() {
         let mut state = test_client_state(tau_for(4));
         let (msg, fin) = request_batch(&mut state, TAG, &[b"a", b"b", b"c"]).unwrap();
 
         assert_eq!(msg.rows.len(), 3 * H_ROWS);
         assert_eq!(fin.rows.len(), 3 * H_ROWS);
-        assert_eq!(state.remaining_slots(), tau_for(1));
+        assert_eq!(state.remaining_runs(), tau_for(1));
     }
 
     #[test]
@@ -640,7 +699,7 @@ mod tests {
                 if needed == tau_for(3) && have == tau_for(2)
         ));
 
-        assert_eq!(state.remaining_slots(), tau_for(2));
+        assert_eq!(state.remaining_runs(), tau_for(2));
     }
 
     #[test]
@@ -654,7 +713,7 @@ mod tests {
 
         let err = blind_eval(&mut server_state, &sk, &partial).unwrap_err();
         assert!(matches!(err, BlindEvalError::Malformed(_)), "{err}");
-        assert_eq!(server_state.remaining_slots(), tau_for(2));
+        assert_eq!(server_state.remaining_runs(), tau_for(2));
     }
 
     #[test]
@@ -769,11 +828,11 @@ mod tests {
     fn blind_eval_consumes_h_rows() {
         let sk = SecretKey::random(&mut rand::rng());
         let (mut client_state, mut server_state) = matched_states(&sk, tau_for(3));
-        let before = server_state.remaining_slots();
+        let before = server_state.remaining_runs();
         let (msg, _) = request(&mut client_state, TAG, b"input").unwrap();
 
         blind_eval(&mut server_state, &sk, &msg).unwrap();
-        assert_eq!(server_state.remaining_slots(), before - tau_for(1));
+        assert_eq!(server_state.remaining_runs(), before - tau_for(1));
     }
 
     #[test]
@@ -785,7 +844,7 @@ mod tests {
 
         let err = blind_eval(&mut server_state, &sk, &msg).unwrap_err();
         assert!(matches!(err, BlindEvalError::UnknownSession { .. }));
-        assert_eq!(server_state.remaining_slots(), tau_for(1));
+        assert_eq!(server_state.remaining_runs(), tau_for(1));
     }
 
     #[test]
@@ -807,7 +866,7 @@ mod tests {
             let err = blind_eval(&mut server_state, &sk, &bad).unwrap_err();
             assert!(matches!(err, BlindEvalError::Malformed(_)), "{err}");
         }
-        assert_eq!(server_state.remaining_slots(), tau_for(1));
+        assert_eq!(server_state.remaining_runs(), tau_for(1));
     }
 
     #[test]
@@ -823,7 +882,7 @@ mod tests {
             BlindEvalError::Exhausted { needed, have }
                 if needed == tau_for(1) && have == 0
         ));
-        assert_eq!(server_state.remaining_slots(), 0);
+        assert_eq!(server_state.remaining_runs(), 0);
     }
 
     #[tokio::test]
@@ -854,6 +913,7 @@ mod tests {
                 };
                 rows
             ],
+            proofs: Vec::new(),
         };
 
         let (client, server) = tokio::join!(
@@ -875,5 +935,83 @@ mod tests {
             },
         );
         assert_eq!(got_resp.evaluations(), MAX_BATCH_EVALUATIONS);
+    }
+
+    async fn voprf_states(sk: &SecretKey, evaluations: usize) -> (ClientState, ServerState) {
+        let (mut server_conn, mut client_conn) = cryprot_net::testing::local_conn().await.unwrap();
+        let pk = verified_key(sk);
+        let mut rng = rand::rng();
+        tokio::try_join!(
+            preproc_client_voprf(&mut client_conn, &pk, tau_for(evaluations), &mut rng),
+            preproc_server(&mut server_conn, sk, tau_for(evaluations)),
+        )
+        .expect("preprocessing")
+    }
+
+    #[tokio::test]
+    async fn a_voprf_client_refuses_a_response_under_another_key() {
+        let sk = SecretKey::random(&mut rand::rng());
+        let other = SecretKey::random(&mut rand::rng());
+        let (mut client_state, mut server_state) = voprf_states(&sk, 1).await;
+        let (msg, fin) = request(&mut client_state, TAG, b"input").unwrap();
+
+        let resp = blind_eval(&mut server_state, &other, &msg).unwrap();
+
+        let err = finalize(&fin, &resp).unwrap_err();
+        assert!(matches!(err, FinalizeError::Verify(_)), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_voprf_client_refuses_a_changed_response() {
+        let sk = SecretKey::random(&mut rand::rng());
+        let (mut client_state, mut server_state) = voprf_states(&sk, 1).await;
+        let (msg, fin) = request(&mut client_state, TAG, b"input").unwrap();
+        let mut resp = blind_eval(&mut server_state, &sk, &msg).unwrap();
+
+        resp.rows[H_ROWS - 1].y[DELTA - 1] ^= 1;
+
+        let err = finalize(&fin, &resp).unwrap_err();
+        assert!(matches!(err, FinalizeError::Verify(_)), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_voprf_client_refuses_the_proofs_of_a_batch_swapped() {
+        let sk = SecretKey::random(&mut rand::rng());
+        let (mut client_state, mut server_state) = voprf_states(&sk, 2).await;
+        let (msg, fin) = request_batch(&mut client_state, TAG, &[b"a", b"b"]).unwrap();
+        let mut resp = blind_eval(&mut server_state, &sk, &msg).unwrap();
+
+        resp.proofs.swap(0, 1);
+
+        let err = finalize_batch(&fin, &resp).unwrap_err();
+        assert!(matches!(err, FinalizeError::Verify(_)), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_voprf_batch_over_its_maximum_is_refused() {
+        let sk = SecretKey::random(&mut rand::rng());
+        let (mut client_state, mut server_state) = voprf_states(&sk, 1).await;
+        let evaluations = MAX_VOPRF_BATCH_EVALUATIONS + 1;
+
+        let inputs = vec![b"x".as_slice(); evaluations];
+        let err = request_batch(&mut client_state, TAG, &inputs).unwrap_err();
+        assert!(
+            matches!(err, RequestError::VoprfBatchTooLarge { len } if len == evaluations),
+            "{err}"
+        );
+        assert_eq!(client_state.remaining_runs(), tau_for(1));
+
+        // The server refuses it too, from a client that skips the check.
+        let (mut over, _) = request(&mut client_state, TAG, b"x").unwrap();
+        over.rows = over
+            .rows
+            .iter()
+            .cycle()
+            .take(evaluations * H_ROWS)
+            .cloned()
+            .collect();
+        let err = blind_eval(&mut server_state, &sk, &over).unwrap_err();
+        assert!(matches!(err, BlindEvalError::Malformed(_)), "{err}");
+        assert_eq!(server_state.remaining_runs(), tau_for(1));
     }
 }

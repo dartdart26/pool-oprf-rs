@@ -10,6 +10,8 @@ silent-ot = ["pool-psi/silent-ot"]
 
 [dependencies]
 anyhow = { workspace = true }
+bincode = { workspace = true }
+pool-oprf = { workspace = true }
 pool-prf = { workspace = true }
 pool-psi = { workspace = true }
 clap = { workspace = true }

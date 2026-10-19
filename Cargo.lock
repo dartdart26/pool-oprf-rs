@@ -448,7 +448,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "wide",
 ]
 
@@ -1445,7 +1444,9 @@ dependencies = [
  "cryprot-ot",
  "futures",
  "pool-eval",
+ "pool-oprf",
  "pool-prf",
+ "pool-voprf",
  "rand",
  "serde",
  "serde_bytes",
@@ -1472,7 +1473,6 @@ name = "pool-psi"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "cryprot-core",
  "cryprot-net",
  "futures",
  "pool-oprf",
@@ -1489,8 +1489,10 @@ name = "pool-psi-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "clap",
  "cryprot-net",
+ "pool-oprf",
  "pool-prf",
  "pool-psi",
  "rand",

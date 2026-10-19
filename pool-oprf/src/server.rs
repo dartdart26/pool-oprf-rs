@@ -5,14 +5,15 @@
 //!
 //! The server does not keep a table of those sessions - each is owned by the
 //! task driving its connection and dies with it. So nothing has to evict
-//! them, and a request can only ever spend the slots of the connection it
+//! them, and a request can only ever spend the runs of the connection it
 //! arrived on.
 
 use crate::channel::{ChannelError, ServerChannel};
-use crate::online::{BlindEvalError, blind_eval};
+use crate::online::{BlindEvalError, MAX_BATCH_EVALUATIONS, blind_eval};
 use crate::preprocessing::{
     PreprocError, ServerState, Uid, evaluations_for, preproc_server, tau_for,
 };
+use crate::voprf::{self, MAX_VOPRF_BATCH_EVALUATIONS, Proof, ProveError, PublicKey};
 use cryprot_net::Connection;
 use pool_prf::prf::SecretKey;
 use std::sync::Arc;
@@ -40,7 +41,8 @@ impl OprfServer {
     /// Run PreProc (Figure 3) with one client and open its online channel.
     ///
     /// Preprocesses for `evaluations` full OPRF evaluations. The peer must
-    /// call [`crate::client::OprfClient::new`] with the same number.
+    /// call [`crate::client::OprfClient::new`] or
+    /// [`crate::client::OprfClient::new_voprf`] with the same number.
     pub async fn session(
         &self,
         mut conn: Connection,
@@ -59,11 +61,19 @@ impl OprfServer {
     pub fn key(&self) -> &SecretKey {
         &self.sk
     }
+
+    /// `pk` and `π_setup` of this server's key, to publish. A client takes
+    /// them with [`VerifiedKey::verify`].
+    ///
+    /// [`VerifiedKey::verify`]: crate::voprf::VerifiedKey::verify
+    pub fn public_key(&self) -> Result<(PublicKey, Proof), ProveError> {
+        voprf::setup(&self.sk)
+    }
 }
 
 /// One client connection, with the preprocessing it did.
 ///
-/// The slots live exactly as long as this does, so nothing has to evict them
+/// The runs live exactly as long as this does, so nothing has to evict them
 /// and a request can only ever spend its own session's.
 pub struct OprfSession {
     conn: Connection,
@@ -106,7 +116,16 @@ impl OprfSession {
     }
 
     pub fn remaining_evaluations(&self) -> usize {
-        evaluations_for(self.state.remaining_slots())
+        evaluations_for(self.state.remaining_runs())
+    }
+
+    /// Most evaluations one request may carry: [`MAX_BATCH_EVALUATIONS`] or
+    /// [`MAX_VOPRF_BATCH_EVALUATIONS`] for a VOPRF.
+    pub fn max_batch_evaluations(&self) -> usize {
+        match self.state.voprf() {
+            Some(_) => MAX_VOPRF_BATCH_EVALUATIONS,
+            None => MAX_BATCH_EVALUATIONS,
+        }
     }
 
     pub fn uid(&self) -> &Uid {
@@ -150,15 +169,15 @@ mod tests {
     /// server's needs a client that skips it: this one puts a two-evaluation
     /// request on the wire against a one-evaluation session.
     ///
-    /// Serving it would spend a slot twice.
+    /// Serving it would spend a run twice.
     #[tokio::test]
-    async fn rejects_a_request_beyond_its_remaining_slots() {
+    async fn rejects_a_request_beyond_its_remaining_runs() {
         let (server_conn, mut client_conn) = cryprot_net::testing::local_conn().await.unwrap();
         let mut client_rng = StdRng::seed_from_u64(40);
         let mut server_rng = StdRng::seed_from_u64(41);
         let server = OprfServer::new(SecretKey::random(&mut server_rng));
         // The client half by hand, in `OprfServer::session`'s order. One
-        // evaluation on both sides, counted in slots here and evaluations there.
+        // evaluation on both sides, counted in runs here and evaluations there.
         let (client, session) = tokio::join!(
             async {
                 let state = preproc_client(&mut client_conn, tau_for(1), &mut client_rng)

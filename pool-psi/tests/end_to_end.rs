@@ -1,5 +1,7 @@
 //! Full PSI runs over a real connection, using only the crate's public API.
 
+use pool_oprf::testing::verified_key;
+use pool_oprf::voprf::MAX_VOPRF_BATCH_EVALUATIONS;
 use pool_prf::prf::SecretKey;
 use pool_psi::client::PsiClient;
 use pool_psi::error::PsiError;
@@ -81,7 +83,7 @@ async fn two_clients_share_one_key() {
     let masked = server.mask(TAG, server_set);
 
     // Deliberately different sizes: `tau` follows the set size each client
-    // announced, so the two sessions hold different numbers of slots and each
+    // announced, so the two sessions hold different numbers of runs and each
     // has to be charged against its own.
     let big: [&[u8]; 5] = [b"alice", b"bob", b"carol", b"dave", b"frank"];
     let small: [&[u8]; 2] = [b"erin", b"mallory"];
@@ -134,7 +136,7 @@ async fn a_finished_session_leaves_the_others_alone() {
         "B must still hold everything it preprocessed for"
     );
 
-    // And B can still run, on slots a completed run did not touch.
+    // And B can still intersect, on runs that A's intersection did not touch.
     let (found_b, ()) = tokio::try_join!(
         client_b.intersect(&second),
         session_b.serve_masked(TAG, &masked),
@@ -160,4 +162,36 @@ async fn a_set_of_the_wrong_size_is_rejected() {
         ),
         "{err}"
     );
+}
+
+#[tokio::test]
+async fn a_voprf_client_learns_the_intersection() {
+    // One more element than a VOPRF batch, for two round trips.
+    let client_set: Vec<String> = (0..=MAX_VOPRF_BATCH_EVALUATIONS)
+        .map(|i| format!("client-{i}"))
+        .collect();
+    let server_set = [
+        client_set[1].clone(),
+        client_set[MAX_VOPRF_BATCH_EVALUATIONS].clone(),
+        "server-only".to_owned(),
+    ];
+
+    let (server_conn, client_conn) = cryprot_net::testing::local_conn().await.unwrap();
+    let server = PsiServer::new(SecretKey::random(&mut StdRng::seed_from_u64(9)));
+    let pk = verified_key(server.key());
+    let mut rng = StdRng::seed_from_u64(10);
+
+    let (client, mut session) = tokio::try_join!(
+        PsiClient::new_voprf(client_conn, &pk, client_set.len(), &mut rng),
+        server.session(server_conn),
+    )
+    .unwrap();
+    let (indices, ()) = tokio::try_join!(
+        client.intersect(&client_set),
+        session.serve(TAG, &server_set),
+    )
+    .unwrap();
+
+    assert_eq!(indices, vec![1, MAX_VOPRF_BATCH_EVALUATIONS]);
+    assert_eq!(session.remaining_evaluations(), 0);
 }

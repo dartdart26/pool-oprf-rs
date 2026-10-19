@@ -9,6 +9,7 @@
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use cryprot_net::Connection;
+use pool_oprf::voprf::{Proof, PublicKey, VerifiedKey};
 use pool_prf::params::N;
 use pool_prf::prf::SecretKey;
 use pool_psi::client::PsiClient;
@@ -45,6 +46,8 @@ enum Command {
     Lookup(Lookup),
     /// Write a PRF key for `serve --psi-key` to load.
     Keygen(Keygen),
+    /// Write the key's `pk` and `π_setup`.
+    PublicKey(PublicKeyArgs),
 }
 
 #[derive(Args)]
@@ -108,11 +111,24 @@ struct Lookup {
     /// Seconds to wait on the server before giving up
     #[arg(long, default_value = "60", value_parser = seconds)]
     timeout: Duration,
+    /// The server's `pk` and `π_setup` from `public-key`. With it, this is a VOPRF.
+    #[arg(long)]
+    pk: Option<PathBuf>,
 }
 
 #[derive(Args)]
 struct Keygen {
     /// Where to write the key
+    #[arg(long)]
+    out: PathBuf,
+}
+
+#[derive(Args)]
+struct PublicKeyArgs {
+    /// PRF key from `keygen`
+    #[arg(long)]
+    psi_key: PathBuf,
+    /// Where to write `pk` and `π_setup`
     #[arg(long)]
     out: PathBuf,
 }
@@ -123,6 +139,7 @@ async fn main() -> Result<()> {
         Command::Serve(args) => serve(args).await,
         Command::Lookup(args) => lookup(args).await,
         Command::Keygen(args) => keygen(args),
+        Command::PublicKey(args) => public_key(args),
     }
 }
 
@@ -198,6 +215,13 @@ async fn session(
 async fn lookup(args: Lookup) -> Result<()> {
     let set = read_set(&args.set)?;
     let cert = read_pem(&args.cert)?;
+    let pk = args.pk.as_deref().map(read_pk).transpose()?;
+    if let Some(path) = &args.pk {
+        println!(
+            "VOPRF: verifying the server's proofs against the public key in {}",
+            path.display()
+        );
+    }
 
     println!("TLS key exchange: {TLS_POLICY}");
     let client = Client::builder()
@@ -205,15 +229,19 @@ async fn lookup(args: Lookup) -> Result<()> {
         .with_io(io("0.0.0.0:0".parse()?)?)?
         .with_limits(limits()?)?
         .start()?;
-    let quic_conn = client
+    let mut quic_conn = client
         .connect(Connect::new(args.connect).with_server_name(args.server_name))
         .await?;
+    quic_conn.keep_alive(true)?;
     let (conn, streams) = Connection::new(quic_conn);
     tokio::spawn(streams.start());
 
     let run = async {
         let started = Instant::now();
-        let psi = PsiClient::new(conn, set.len(), &mut rand::rng()).await?;
+        let psi = match &pk {
+            Some(pk) => PsiClient::new_voprf(conn, pk, set.len(), &mut rand::rng()).await?,
+            None => PsiClient::new(conn, set.len(), &mut rand::rng()).await?,
+        };
         println!(
             "preprocessed {} evaluations in {:.2}s",
             set.len(),
@@ -251,6 +279,25 @@ fn keygen(args: Keygen) -> Result<()> {
 
     println!("wrote {}", args.out.display());
     Ok(())
+}
+
+fn public_key(args: PublicKeyArgs) -> Result<()> {
+    let server = PsiServer::new(read_key(&args.psi_key)?);
+    let pk_and_proof = server.public_key().context("proving the key")?;
+    let bytes = bincode::serialize(&pk_and_proof).context("encoding pk")?;
+    std::fs::write(&args.out, bytes)
+        .with_context(|| format!("writing pk to {}", args.out.display()))?;
+
+    println!("wrote {}", args.out.display());
+    Ok(())
+}
+
+fn read_pk(path: &Path) -> Result<VerifiedKey> {
+    let bytes = std::fs::read(path).with_context(|| format!("reading pk {}", path.display()))?;
+    let (pk, proof): (PublicKey, Proof) = bincode::deserialize(&bytes)
+        .with_context(|| format!("{} is not a pk from `public-key`", path.display()))?;
+    VerifiedKey::verify(pk, &proof)
+        .with_context(|| format!("the proof in {} does not verify", path.display()))
 }
 
 fn read_key(path: &Path) -> Result<SecretKey> {

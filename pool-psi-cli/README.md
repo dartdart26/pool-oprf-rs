@@ -11,10 +11,12 @@ Entries are opaque UTF-8 strings.
 
 ## Usage
 
-Three subcommands, `keygen`, `serve` and `lookup`.
+Four subcommands, `keygen`, `public-key`, `serve` and `lookup`.
 
 `keygen` writes the PRF key the server masks and evaluates under. It refuses to
 overwrite an existing one.
+
+`public-key` writes the key's `pk` and `π_setup` for clients that want a VOPRF.
 
 `serve` loads that key, masks its set once at startup, then answers every client
 that connects, one session each.
@@ -39,6 +41,12 @@ That runs `keygen` into a temporary directory, starts a server, runs a client
 against it, prints both sides and stops the server. The client finds the 20
 entries the two sets share; the server reports only how many evaluations it
 answered.
+
+To run the PSI demo with a VOPRF:
+
+```
+./pool-psi-cli/demo.sh --voprf
+```
 
 ## Certificates
 

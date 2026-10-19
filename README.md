@@ -55,12 +55,16 @@ See [`pool-psi-cli`](pool-psi-cli/README.md) to run client and server separately
 Pool to be a verifiable OPRF. [`pool-voprf`](pool-voprf/README.md) implements
 it.
 
-Still work in progress.
-
 Currently using Plonky3 with Poseidon2 hashing. To run the proof system tests:
 
 ```
 cargo test -p pool-voprf -- --nocapture
+```
+
+To run the benckmark:
+
+```
+cargo bench --workspace --bench oprf -- voprf
 ```
 
 ## Security

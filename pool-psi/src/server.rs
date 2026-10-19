@@ -10,12 +10,13 @@
 
 use crate::error::PsiError;
 use crate::protocol::{
-    MAX_CLIENT_SET, MAX_SERVER_SET, MaskedElement, MaskedServerSet, chunks_for, mask_server_set,
+    MAX_CLIENT_SET, MAX_SERVER_SET, MaskedElement, MaskedServerSet, mask_server_set, requests_for,
 };
 use crate::transport::ServerChannel;
 use cryprot_net::Connection;
 use pool_oprf::preprocessing::Uid;
 use pool_oprf::server::{OprfServer, OprfSession};
+use pool_oprf::voprf::{Proof, ProveError, PublicKey};
 use pool_prf::prf::SecretKey;
 
 #[derive(Clone)]
@@ -71,6 +72,11 @@ impl PsiServer {
     pub fn key(&self) -> &SecretKey {
         self.oprf.key()
     }
+
+    /// `pk` and `π_setup` of this server's key, to publish for VOPRF clients.
+    pub fn public_key(&self) -> Result<(PublicKey, Proof), ProveError> {
+        self.oprf.public_key()
+    }
 }
 
 /// One client connection, preprocessed for the set size it announced.
@@ -97,8 +103,9 @@ impl PsiSession {
     /// its own set under whatever tag arrives here, and a mismatch produces an
     /// empty intersection rather than an error.
     ///
-    /// Returns once the client has spent its slots - the session was sized to
-    /// exactly this run, so it is finished afterwards and can be dropped.
+    /// Returns once the client has spent its runs - the session was sized to
+    /// exactly this intersection, so it is finished afterwards and can be
+    /// dropped.
     pub async fn serve_masked(
         &mut self,
         tag: &[u8],
@@ -118,10 +125,10 @@ impl PsiSession {
             })
             .await?;
 
-        // The round count is derived from the set size, not signalled, so a
+        // The request count is derived from the set size, not signalled, so a
         // client that stops early is a protocol violation rather than an end
         // of stream.
-        for _ in 0..chunks_for(self.set_size) {
+        for _ in 0..requests_for(self.set_size, self.oprf.max_batch_evaluations()) {
             if !self.oprf.serve_next().await? {
                 return Err(PsiError::UnexpectedClose);
             }

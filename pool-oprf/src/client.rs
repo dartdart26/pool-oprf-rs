@@ -7,11 +7,13 @@
 
 use crate::channel::{ChannelError, ClientChannel};
 use crate::online::{
-    FinalizeError, RequestError, finalize, finalize_batch, request, request_batch,
+    FinalizeError, MAX_BATCH_EVALUATIONS, RequestError, finalize, finalize_batch, request,
+    request_batch,
 };
 use crate::preprocessing::{
-    ClientState, PreprocError, Uid, evaluations_for, preproc_client, tau_for,
+    ClientState, PreprocError, Uid, evaluations_for, preproc_client, preproc_client_voprf, tau_for,
 };
+use crate::voprf::{MAX_VOPRF_BATCH_EVALUATIONS, VerifiedKey};
 use cryprot_net::Connection;
 use pool_prf::prf::PrfOutput;
 use rand::CryptoRng;
@@ -53,11 +55,28 @@ impl OprfClient {
         })
     }
 
+    /// A VOPRF: the server proves its messages and the lient verifies the proofs against `pk`.
+    pub async fn new_voprf(
+        mut conn: Connection,
+        pk: &VerifiedKey,
+        evaluations: usize,
+        rng: &mut impl CryptoRng,
+    ) -> Result<Self, ClientError> {
+        let state = preproc_client_voprf(&mut conn, pk, tau_for(evaluations), rng).await?;
+        let channel = ClientChannel::new(&mut conn).await?;
+        Ok(Self {
+            conn,
+            channel,
+            state,
+        })
+    }
+
     /// Preprocess again on the same connection, replacing this session.
     ///
     /// Returns the new `uid`. The peer must call [`OprfSession::renew`] at the
     /// same point with the same number of evaluations. The online
-    /// channel is untouched, so requests continue over it afterwards.
+    /// channel is untouched, so requests continue over it afterwards. A
+    /// VOPRF stays a VOPRF.
     ///
     /// [`OprfSession::renew`]: crate::server::OprfSession::renew
     pub async fn renew(
@@ -65,7 +84,12 @@ impl OprfClient {
         evaluations: usize,
         rng: &mut impl CryptoRng,
     ) -> Result<Uid, ClientError> {
-        self.state = preproc_client(&mut self.conn, tau_for(evaluations), rng).await?;
+        let tau = tau_for(evaluations);
+        let pk = self.state.voprf().map(|voprf| *voprf.pk());
+        self.state = match &pk {
+            Some(pk) => preproc_client_voprf(&mut self.conn, pk, tau, rng).await?,
+            None => preproc_client(&mut self.conn, tau, rng).await?,
+        };
         Ok(*self.state.uid())
     }
 
@@ -83,9 +107,8 @@ impl OprfClient {
     /// consuming one of the session's evaluations per input.
     ///
     /// Outputs come back in the order of `inputs`. At most
-    /// [`MAX_BATCH_EVALUATIONS`] per call.
-    ///
-    /// [`MAX_BATCH_EVALUATIONS`]: crate::online::MAX_BATCH_EVALUATIONS
+    /// [`MAX_BATCH_EVALUATIONS`] per call, or [`MAX_VOPRF_BATCH_EVALUATIONS`]
+    /// for a VOPRF.
     pub async fn evaluate_batch<T: AsRef<[u8]>>(
         &mut self,
         tag: &[u8],
@@ -97,7 +120,17 @@ impl OprfClient {
     }
 
     pub fn remaining_evaluations(&self) -> usize {
-        evaluations_for(self.state.remaining_slots())
+        evaluations_for(self.state.remaining_runs())
+    }
+
+    /// Most evaluations one [`Self::evaluate_batch`] call may carry:
+    /// [`MAX_BATCH_EVALUATIONS`], or [`MAX_VOPRF_BATCH_EVALUATIONS`] for a
+    /// VOPRF.
+    pub fn max_batch_evaluations(&self) -> usize {
+        match self.state.voprf() {
+            Some(_) => MAX_VOPRF_BATCH_EVALUATIONS,
+            None => MAX_BATCH_EVALUATIONS,
+        }
     }
 
     pub fn uid(&self) -> &Uid {
