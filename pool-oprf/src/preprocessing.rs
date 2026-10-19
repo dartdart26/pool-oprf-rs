@@ -412,6 +412,8 @@ pub enum PreprocError {
     Malformed(&'static str),
     #[error("tau must be at least 1")]
     ZeroTau,
+    #[error("a VOPRF needs tau of at least one evaluation, {H_ROWS}, got {tau}")]
+    VoprfTauTooSmall { tau: usize },
     #[error("peer is preprocessing for tau = {theirs}, this side asked for {ours}")]
     TauMismatch { ours: usize, theirs: usize },
     #[error("the client's commitments to its masks do not match the server's masks")]
@@ -489,6 +491,9 @@ async fn preproc_client_with(
 ) -> Result<ClientState, PreprocError> {
     if tau == 0 {
         return Err(PreprocError::ZeroTau);
+    }
+    if pk.is_some() && evaluations_for(tau) == 0 {
+        return Err(PreprocError::VoprfTauTooSmall { tau });
     }
 
     let binary_ot_conn = conn.sub_connection();
@@ -631,6 +636,9 @@ pub async fn preproc_server(
     if theirs != tau {
         return Err(PreprocError::TauMismatch { ours: tau, theirs });
     }
+    if wants_voprf && evaluations_for(tau) == 0 {
+        return Err(PreprocError::VoprfTauTooSmall { tau });
+    }
 
     let mut voprf = if wants_voprf {
         Some(ServerPreprocessing::open(conn).await?)
@@ -739,5 +747,29 @@ mod tests {
         assert_eq!(runs.take(3), Some(0));
         assert_eq!(runs.take(3), None, "only one run left");
         assert_eq!(runs.remaining(), 1, "the refusal spent nothing");
+    }
+
+    /// The client's own check stops it before the hello. This one skips it
+    /// and sends a VOPRF hello for less than one evaluation.
+    #[tokio::test]
+    async fn the_server_refuses_a_voprf_for_less_than_one_evaluation() {
+        let (mut server_conn, mut client_conn) = cryprot_net::testing::local_conn().await.unwrap();
+        let sk = SecretKey::random(&mut rand::rng());
+        let tau = H_ROWS - 1;
+
+        // The client's streams, in the order of `preproc_client`.
+        let _binary_ot_conn = client_conn.sub_connection();
+        let _delta_ot_conn = client_conn.sub_connection();
+        let (mut msg_send, _msg_recv) = client_conn.stream::<Vec<u8>>().await.unwrap();
+        let mut hello = [0u8; LAMBDA_BYTES].to_vec();
+        hello.extend_from_slice(&encode_tau(tau));
+        hello.push(1);
+        msg_send.send(hello).await.unwrap();
+
+        let server = preproc_server(&mut server_conn, &sk, tau).await;
+        assert!(
+            matches!(server, Err(PreprocError::VoprfTauTooSmall { tau: got }) if got == tau),
+            "{server:?}"
+        );
     }
 }

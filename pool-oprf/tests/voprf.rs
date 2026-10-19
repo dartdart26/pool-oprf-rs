@@ -73,3 +73,17 @@ async fn a_client_refuses_the_preprocessing_under_another_key() {
     server.expect("server preprocessing");
     assert!(matches!(client, Err(PreprocError::Verify(_))));
 }
+
+#[tokio::test]
+async fn a_client_refuses_a_voprf_for_less_than_one_evaluation() {
+    let (_server_conn, mut client_conn) = cryprot_net::testing::local_conn().await.unwrap();
+    let pk = verified_key(server(9).key());
+    let tau = tau_for(1) - 1;
+
+    let mut rng = StdRng::seed_from_u64(10);
+    let client = preproc_client_voprf(&mut client_conn, &pk, tau, &mut rng).await;
+    assert!(matches!(
+        client,
+        Err(PreprocError::VoprfTauTooSmall { tau: got }) if got == tau
+    ));
+}
