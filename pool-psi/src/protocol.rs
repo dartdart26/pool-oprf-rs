@@ -1,6 +1,5 @@
 //! Private set intersection from the Pool OPRF.
 
-use pool_oprf::online::MAX_BATCH_EVALUATIONS;
 use pool_prf::params::OUTPUT_ELEMENTS;
 use pool_prf::prf::{PrfOutput, SecretKey, evaluate};
 use serde::{Deserialize, Serialize};
@@ -20,9 +19,10 @@ pub struct MaskedServerSet {
     pub elements: Vec<MaskedElement>,
 }
 
-/// Round trips the online phase will take for a set of `set_size`, one per batch.
-pub fn chunks_for(set_size: usize) -> usize {
-    set_size.div_ceil(MAX_BATCH_EVALUATIONS)
+/// How many requests the client sends in the online phase: `set_size`
+/// evaluations, at most `batch_size` per request.
+pub fn requests_for(set_size: usize, batch_size: usize) -> usize {
+    set_size.div_ceil(batch_size)
 }
 
 /// Mask the server's set: `F_sk(tag, y)` for each `y`.
@@ -59,6 +59,8 @@ pub fn intersect(outputs: &[PrfOutput], server: &[MaskedElement]) -> Vec<usize> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pool_oprf::online::MAX_BATCH_EVALUATIONS;
+    use pool_oprf::voprf::MAX_VOPRF_BATCH_EVALUATIONS;
 
     const TAG: &[u8] = b"tag-1";
 
@@ -141,9 +143,11 @@ mod tests {
 
     #[test]
     fn sizing_matches_the_oprf_batching() {
-        assert_eq!(chunks_for(1), 1);
-        assert_eq!(chunks_for(MAX_BATCH_EVALUATIONS), 1);
-        assert_eq!(chunks_for(MAX_BATCH_EVALUATIONS + 1), 2);
-        assert_eq!(chunks_for(2 * MAX_BATCH_EVALUATIONS), 2);
+        for batch_size in [MAX_BATCH_EVALUATIONS, MAX_VOPRF_BATCH_EVALUATIONS] {
+            assert_eq!(requests_for(1, batch_size), 1);
+            assert_eq!(requests_for(batch_size, batch_size), 1);
+            assert_eq!(requests_for(batch_size + 1, batch_size), 2);
+            assert_eq!(requests_for(2 * batch_size, batch_size), 2);
+        }
     }
 }

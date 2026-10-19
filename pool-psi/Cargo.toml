@@ -21,8 +21,8 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+pool-oprf = { workspace = true, features = ["testing"] }
 cryprot-net = { workspace = true, features = ["__testing"] }
-cryprot-core = { workspace = true, features = ["__testing"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]

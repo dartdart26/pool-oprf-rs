@@ -1,8 +1,8 @@
 //! OT-based preprocessing for the Pool OPRF (Figure 3 of the paper).
 //!
-//! One preprocessing run produces τ *slots*, one per base protocol run.
-//! A slot yields one ℤ_p element and is spent once. A full PRF evaluation
-//! spends `H_ROWS` consecutive slots, so a session covers τ / `H_ROWS`
+//! One preprocessing serves τ *runs* of the base protocol.
+//! A run yields one ℤ_p element and is spent once. A full PRF evaluation
+//! spends `H_ROWS` consecutive runs, so a session covers τ / `H_ROWS`
 //! full evaluations.
 //!
 //! The paper says each binary-rOT message is a vector of τ ℤ_q elements,
@@ -12,6 +12,9 @@
 //! stored.
 
 use crate::delta_ot::{delta_ot_receive, delta_ot_send};
+use crate::voprf::{
+    ClientPreprocessing, ClientVoprf, ServerPreprocessing, ServerVoprf, VerifiedKey,
+};
 use cryprot_core::Block;
 use cryprot_net::Connection;
 use cryprot_ot::extension::BASE_OT_COUNT;
@@ -46,6 +49,7 @@ use pool_prf::modular::{reduce_p, reduce_q};
 use pool_prf::params::{DELTA, H_ROWS, LAMBDA_BYTES, N, Zdelta, Zp, Zq};
 use pool_prf::prf::SecretKey;
 use rand::{CryptoRng, RngExt};
+use std::array;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Session identifier, `uid` in Figure 3.
@@ -67,10 +71,10 @@ pub const fn tau_for(evaluations: usize) -> usize {
         .expect("evaluations * H_ROWS overflows usize")
 }
 
-/// Full evaluations that `slots` can pay for. A remainder is unusable, since
+/// Full evaluations that `runs` can pay for. A remainder is unusable, since
 /// an evaluation needs all `H_ROWS` of its rows.
-pub const fn evaluations_for(slots: usize) -> usize {
-    slots / H_ROWS
+pub const fn evaluations_for(runs: usize) -> usize {
+    runs / H_ROWS
 }
 
 /// Domain separator for expanding OT blocks into the `r` masks.
@@ -83,15 +87,15 @@ const MASK_BYTES: usize = size_of::<Zq>();
 /// a single 128-bit `Block`, so we expand it to produce multiple masks via
 /// BLAKE3.
 ///
-/// `first_slot` is the slot the masks start at, from 0 to τ - 1.
+/// `first_run` is the run the masks start at, from 0 to τ - 1.
 ///
 /// `H_ROWS` at once rather than one at a time: an evaluation spends `H_ROWS`
-/// consecutive slots, and a single hash setup covers all of them.
-pub(crate) fn expand(ot_block: &Block, first_slot: u64) -> [Zq; H_ROWS] {
+/// consecutive runs, and a single hash setup covers all of them.
+pub(crate) fn expand(ot_block: &Block, first_run: u64) -> [Zq; H_ROWS] {
     let mut hasher = blake3::Hasher::new_derive_key(R_DOMAIN_SEPARATOR);
     hasher.update(ot_block.as_bytes());
     let mut xof = hasher.finalize_xof();
-    xof.set_position(first_slot * MASK_BYTES as u64);
+    xof.set_position(first_run * MASK_BYTES as u64);
 
     let mut buf = [0u8; H_ROWS * MASK_BYTES];
     xof.fill(&mut buf);
@@ -138,16 +142,16 @@ impl Zeroize for RcEntry {
     }
 }
 
-/// The slot budget: how many preprocessing slots exist, and how many are
+/// The run budget: how many preprocessing runs exist, and how many are
 /// spent.
 #[derive(Debug)]
-pub(crate) struct Slots {
+pub(crate) struct Runs {
     tau: usize,
-    /// Next unspent slot, 0 to τ - 1.
+    /// Next unspent run, 0 to τ - 1.
     ctr: usize,
 }
 
-impl Slots {
+impl Runs {
     fn new(tau: usize) -> Self {
         Self { tau, ctr: 0 }
     }
@@ -156,7 +160,7 @@ impl Slots {
         self.tau - self.ctr
     }
 
-    /// Take `count` slots, returning the first, or `None` if that many are not left.
+    /// Take `count` runs, returning the first, or `None` if that many are not left.
     fn take(&mut self, count: usize) -> Option<u64> {
         if self.remaining() < count {
             return None;
@@ -183,7 +187,9 @@ pub struct ClientState {
 
     uid: Uid,
 
-    slots: Slots,
+    runs: Runs,
+
+    voprf: Option<ClientVoprf>,
 }
 
 /// One entry of `R_S`.
@@ -217,7 +223,9 @@ pub struct ServerState {
 
     uid: Uid,
 
-    slots: Slots,
+    runs: Runs,
+
+    voprf: Option<ServerVoprf>,
 }
 
 fn into_array<T: Copy, const N: usize>(mut v: Vec<T>, what: &str) -> [T; N] {
@@ -233,16 +241,18 @@ impl ClientState {
         bhat: Vec<u8>,
         r_c: Vec<RcEntry>,
         uid: Uid,
+        voprf: Option<ClientVoprf>,
     ) -> Self {
         let ot_blocks: [[Block; 2]; N] = into_array(ot_blocks, "N binary rOT block pairs");
         let bhat: [u8; N] = into_array(bhat, "N masked key bits");
-        let slots = Slots::new(r_c.len());
+        let runs = Runs::new(r_c.len());
         Self {
             ot_blocks,
             bhat,
             r_c,
             uid,
-            slots,
+            runs,
+            voprf,
         }
     }
 
@@ -250,28 +260,32 @@ impl ClientState {
         &self.uid
     }
 
-    pub fn remaining_slots(&self) -> usize {
-        self.slots.remaining()
+    pub fn remaining_runs(&self) -> usize {
+        self.runs.remaining()
     }
 
     /// `r^j_{b̄_i,i}` onward, the client's blinding masks for coordinate `i`.
-    pub(crate) fn r_bhat(&self, i: usize, first_slot: u64) -> [Zq; H_ROWS] {
-        expand(&self.ot_blocks[i][self.bhat[i] as usize], first_slot)
+    pub(crate) fn r_bhat(&self, i: usize, first_run: u64) -> [Zq; H_ROWS] {
+        expand(&self.ot_blocks[i][self.bhat[i] as usize], first_run)
     }
 
     /// `r^j_{1-b̄_i,i}` onward, the side not used for blinding.
-    pub(crate) fn r_not_bhat(&self, i: usize, first_slot: u64) -> [Zq; H_ROWS] {
-        expand(&self.ot_blocks[i][1 - self.bhat[i] as usize], first_slot)
+    pub(crate) fn r_not_bhat(&self, i: usize, first_run: u64) -> [Zq; H_ROWS] {
+        expand(&self.ot_blocks[i][1 - self.bhat[i] as usize], first_run)
     }
 
     pub(crate) fn r_c(&self, j: u64) -> RcEntry {
         self.r_c[j as usize]
     }
 
-    /// Reserve `count` consecutive slots, returning the first, or `None` if
+    pub(crate) fn voprf(&self) -> Option<&ClientVoprf> {
+        self.voprf.as_ref()
+    }
+
+    /// Reserve `count` consecutive runs, returning the first, or `None` if
     /// that many are not left.
-    pub(crate) fn next_slots(&mut self, count: usize) -> Option<u64> {
-        self.slots.take(count)
+    pub(crate) fn next_runs(&mut self, count: usize) -> Option<u64> {
+        self.runs.take(count)
     }
 }
 
@@ -279,7 +293,7 @@ impl std::fmt::Debug for ClientState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClientState")
             .field("uid", &self.uid)
-            .field("slots", &self.slots)
+            .field("runs", &self.runs)
             .finish_non_exhaustive()
     }
 }
@@ -305,14 +319,20 @@ impl Drop for ClientState {
 impl ZeroizeOnDrop for ClientState {}
 
 impl ServerState {
-    pub(crate) fn new(r_s: Vec<RsEntry>, s_s: Vec<[Zp; DELTA]>, uid: Uid) -> Self {
+    pub(crate) fn new(
+        r_s: Vec<RsEntry>,
+        s_s: Vec<[Zp; DELTA]>,
+        uid: Uid,
+        voprf: Option<ServerVoprf>,
+    ) -> Self {
         let r_s: [RsEntry; N] = into_array(r_s, "N binary rOT entries");
-        let slots = Slots::new(s_s.len());
+        let runs = Runs::new(s_s.len());
         Self {
             r_s,
             s_s,
             uid,
-            slots,
+            runs,
+            voprf,
         }
     }
 
@@ -320,23 +340,27 @@ impl ServerState {
         &self.uid
     }
 
-    pub fn remaining_slots(&self) -> usize {
-        self.slots.remaining()
+    pub fn remaining_runs(&self) -> usize {
+        self.runs.remaining()
     }
 
     /// `r^j_{b_i,i}` onward, the masks the server knows for binary OT `i`.
-    pub(crate) fn r(&self, i: usize, first_slot: u64) -> [Zq; H_ROWS] {
-        expand(&self.r_s[i].ot_block, first_slot)
+    pub(crate) fn r(&self, i: usize, first_run: u64) -> [Zq; H_ROWS] {
+        expand(&self.r_s[i].ot_block, first_run)
     }
 
     pub(crate) fn s_s(&self, j: u64) -> &[Zp; DELTA] {
         &self.s_s[j as usize]
     }
 
-    /// Reserve `count` consecutive slots, returning the first, or `None` if
+    pub(crate) fn voprf(&self) -> Option<&ServerVoprf> {
+        self.voprf.as_ref()
+    }
+
+    /// Reserve `count` consecutive runs, returning the first, or `None` if
     /// that many are not left.
-    pub(crate) fn next_slots(&mut self, count: usize) -> Option<u64> {
-        self.slots.take(count)
+    pub(crate) fn next_runs(&mut self, count: usize) -> Option<u64> {
+        self.runs.take(count)
     }
 }
 
@@ -344,7 +368,7 @@ impl std::fmt::Debug for ServerState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ServerState")
             .field("uid", &self.uid)
-            .field("slots", &self.slots)
+            .field("runs", &self.runs)
             .finish_non_exhaustive()
     }
 }
@@ -355,6 +379,9 @@ impl Zeroize for ServerState {
             entry.zeroize();
         }
         self.s_s.zeroize();
+        if let Some(voprf) = &mut self.voprf {
+            voprf.zeroize();
+        }
     }
 }
 
@@ -387,10 +414,19 @@ pub enum PreprocError {
     ZeroTau,
     #[error("peer is preprocessing for tau = {theirs}, this side asked for {ours}")]
     TauMismatch { ours: usize, theirs: usize },
+    #[error("the client's commitments to its masks do not match the server's masks")]
+    MasksMismatch,
+    #[error("the server's commitment to the client's pad does not match the client's pad")]
+    PadsMismatch,
+    #[error("proving the preprocessing failed")]
+    Prove(#[from] crate::voprf::ProveError),
+    #[error("the preprocessing proof does not verify")]
+    Verify(#[from] crate::voprf::VerifyError),
 }
 
-/// The opening message: `uid` followed by τ as a little-endian `u64`.
-const HELLO_BYTES: usize = LAMBDA_BYTES + 8;
+/// The opening message: `uid`, τ as a little-endian `u64` and whether the
+/// client asks for a VOPRF, 0 or 1.
+const HELLO_BYTES: usize = LAMBDA_BYTES + 8 + 1;
 
 const MAX_CONTROL_FRAME_BYTES: usize = N + 9;
 const _: () = assert!(
@@ -432,6 +468,25 @@ pub async fn preproc_client(
     tau: usize,
     rng: &mut impl CryptoRng,
 ) -> Result<ClientState, PreprocError> {
+    preproc_client_with(conn, None, tau, rng).await
+}
+
+/// A VOPRF client.
+pub async fn preproc_client_voprf(
+    conn: &mut Connection,
+    pk: &VerifiedKey,
+    tau: usize,
+    rng: &mut impl CryptoRng,
+) -> Result<ClientState, PreprocError> {
+    preproc_client_with(conn, Some(pk), tau, rng).await
+}
+
+async fn preproc_client_with(
+    conn: &mut Connection,
+    pk: Option<&VerifiedKey>,
+    tau: usize,
+    rng: &mut impl CryptoRng,
+) -> Result<ClientState, PreprocError> {
     if tau == 0 {
         return Err(PreprocError::ZeroTau);
     }
@@ -451,6 +506,7 @@ pub async fn preproc_client(
     let uid = random_uid(rng);
     let mut hello = uid.to_vec();
     hello.extend_from_slice(&encode_tau(tau));
+    hello.push(u8::from(pk.is_some()));
     msg_send.send(hello).await?;
 
     // The server echoes its own tau, so a mismatch fails.
@@ -463,11 +519,22 @@ pub async fn preproc_client(
         return Err(PreprocError::TauMismatch { ours: tau, theirs });
     }
 
+    let mut voprf = match pk {
+        Some(pk) => Some(ClientPreprocessing::open(conn, pk).await?),
+        None => None,
+    };
+
     // Line (2): N binary rOTs with the client as sender. Keep the OT block
     // pairs.
     let mut sender = ot_sender(binary_ot_conn);
     let mut ot_blocks = sender.send(BINARY_OT_COUNT).await?;
     ot_blocks.truncate(N);
+
+    if let Some(voprf) = &mut voprf {
+        voprf
+            .send_masks_commitments(&ot_blocks, evaluations_for(tau))
+            .await?;
+    }
 
     // Line (3): tau 1-out-of-Δ rOTs with the client as receiver.
     let mut receiver = ot_receiver(delta_ot_conn);
@@ -482,6 +549,16 @@ pub async fn preproc_client(
         })
         .collect();
 
+    if let Some(voprf) = &mut voprf {
+        voprf
+            .receive_pads_commitments(
+                &receiver_out.blocks,
+                &receiver_out.choices,
+                evaluations_for(tau),
+            )
+            .await?;
+    }
+
     // Line (4): receive the masked key bits b̄_i = b_i ⊕ sk_i.
     let bhat = msg_recv
         .next()
@@ -494,7 +571,15 @@ pub async fn preproc_client(
         return Err(PreprocError::Malformed("b_hat entries must be bits"));
     }
 
-    Ok(ClientState::new(ot_blocks, bhat, r_c, uid))
+    let voprf = match voprf {
+        Some(voprf) => {
+            let b_bar = bhat[..].try_into().expect("length checked above");
+            Some(voprf.finish(b_bar).await?)
+        }
+        None => None,
+    };
+
+    Ok(ClientState::new(ot_blocks, bhat, r_c, uid, voprf))
 }
 
 /// Run the server side of PreProc (Figure 3).
@@ -533,7 +618,12 @@ pub async fn preproc_server(
     let uid: Uid = hello[..LAMBDA_BYTES]
         .try_into()
         .expect("length checked above");
-    let theirs = decode_tau(&hello[LAMBDA_BYTES..])?;
+    let theirs = decode_tau(&hello[LAMBDA_BYTES..HELLO_BYTES - 1])?;
+    let wants_voprf = match hello[HELLO_BYTES - 1] {
+        0 => false,
+        1 => true,
+        _ => return Err(PreprocError::Malformed("the VOPRF flag must be 0 or 1")),
+    };
 
     // Echoed before the check so the client fails with the same error rather
     // than with a dropped connection.
@@ -541,6 +631,12 @@ pub async fn preproc_server(
     if theirs != tau {
         return Err(PreprocError::TauMismatch { ours: tau, theirs });
     }
+
+    let mut voprf = if wants_voprf {
+        Some(ServerPreprocessing::open(conn).await?)
+    } else {
+        None
+    };
 
     // Line (2): N binary rOTs with the server as receiver.
     let mut receiver = ot_receiver(binary_ot_conn);
@@ -555,6 +651,12 @@ pub async fn preproc_server(
         })
         .collect();
 
+    if let Some(voprf) = &mut voprf {
+        voprf
+            .receive_masks_commitments(&r_s, evaluations_for(tau))
+            .await?;
+    }
+
     // Line (3): tau 1-out-of-Δ rOTs with the server as sender.
     let mut sender = ot_sender(delta_ot_conn);
     let sender_out = delta_ot_send(&mut sender, tau).await?;
@@ -564,15 +666,22 @@ pub async fn preproc_server(
         .map(|blocks| std::array::from_fn(|k| r_prime_from_block(&blocks[k])))
         .collect();
 
-    // Line (4): send the masked key bits b̄_i = b_i ⊕ sk_i.
-    let bhat: Vec<u8> = r_s
-        .iter()
-        .zip(sk.as_bits())
-        .map(|(entry, &sk_i)| entry.b ^ sk_i)
-        .collect();
-    msg_send.send(bhat).await?;
+    if let Some(voprf) = &mut voprf {
+        voprf
+            .send_pads_commitments(&sender_out.blocks, evaluations_for(tau))
+            .await?;
+    }
 
-    Ok(ServerState::new(r_s, s_s, uid))
+    // Line (4): send the masked key bits b̄_i = b_i ⊕ sk_i.
+    let bhat: [u8; N] = array::from_fn(|i| r_s[i].b ^ sk.as_bits()[i]);
+    msg_send.send(bhat.to_vec()).await?;
+
+    let voprf = match voprf {
+        Some(voprf) => Some(voprf.prove(sk, &r_s, bhat, sender_out.blocks).await?),
+        None => None,
+    };
+
+    Ok(ServerState::new(r_s, s_s, uid, voprf))
 }
 
 #[cfg(test)]
@@ -591,14 +700,14 @@ mod tests {
     }
 
     #[test]
-    fn expand_differs_across_slots_and_ot_blocks() {
+    fn expand_differs_across_runs_and_ot_blocks() {
         let ot_block_a = Block::new([1u8; Block::BYTES]);
         let ot_block_b = Block::new([2u8; Block::BYTES]);
 
         assert_ne!(
             expand(&ot_block_a, 0),
             expand(&ot_block_a, 1),
-            "a later slot gives different masks"
+            "a later run gives different masks"
         );
         assert_ne!(
             expand(&ot_block_a, 0),
@@ -608,27 +717,27 @@ mod tests {
     }
 
     #[test]
-    fn slots_exhaust_after_tau() {
+    fn runs_exhaust_after_tau() {
         let tau = 4;
-        let mut slots = Slots::new(tau);
-        assert_eq!(slots.remaining(), tau);
+        let mut runs = Runs::new(tau);
+        assert_eq!(runs.remaining(), tau);
 
         for taken in 0..tau {
-            assert_eq!(slots.take(1), Some(taken as u64), "slots come out in order");
-            assert_eq!(slots.remaining(), tau - 1 - taken);
+            assert_eq!(runs.take(1), Some(taken as u64), "runs come out in order");
+            assert_eq!(runs.remaining(), tau - 1 - taken);
         }
 
-        assert_eq!(slots.take(1), None);
-        assert_eq!(slots.take(1), None);
-        assert_eq!(slots.remaining(), 0);
+        assert_eq!(runs.take(1), None);
+        assert_eq!(runs.take(1), None);
+        assert_eq!(runs.remaining(), 0);
     }
 
     #[test]
     fn a_request_that_does_not_fit_spends_nothing() {
-        let mut slots = Slots::new(4);
+        let mut runs = Runs::new(4);
 
-        assert_eq!(slots.take(3), Some(0));
-        assert_eq!(slots.take(3), None, "only one slot left");
-        assert_eq!(slots.remaining(), 1, "the refusal spent nothing");
+        assert_eq!(runs.take(3), Some(0));
+        assert_eq!(runs.take(3), None, "only one run left");
+        assert_eq!(runs.remaining(), 1, "the refusal spent nothing");
     }
 }

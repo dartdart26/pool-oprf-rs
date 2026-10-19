@@ -21,7 +21,8 @@ equality on those outputs, like a hash-set lookup.
 3. The server applies the plaintext PRF to its deduplicated set and sends the
    result. This needs no OTs at all.
 4. The client evaluates its own set through the OPRF, in batches of
-   `MAX_BATCH_EVALUATIONS`, and looks the results up in what arrived at step 3.
+   `MAX_BATCH_EVALUATIONS` (`MAX_VOPRF_BATCH_EVALUATIONS` for a VOPRF), and
+   looks the results up in what arrived at step 3.
 
 Steps 3 and 4 are the online phase, one round trip per batch.
 
@@ -33,6 +34,13 @@ server holds.
 The **server** learns how many elements the client announced, duplicates
 included, since preprocessing is sized to that number. Server doesn't learn
 any element or how many matched.
+
+## VOPRF
+
+In VOPRF mode, the server proves every answer under its published `pk`
+(see [docs/voprf.md](../docs/voprf.md)) and the client checks each proof.
+The client takes `pk` only after `π_setup` verifies. Note that proofs make
+preprocessing and evaluations slower and larger.
 
 ## Cost
 

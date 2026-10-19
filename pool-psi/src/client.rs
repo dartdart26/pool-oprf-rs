@@ -11,8 +11,8 @@ use crate::protocol::{MAX_CLIENT_SET, MAX_SERVER_SET, intersect};
 use crate::transport::ClientChannel;
 use cryprot_net::Connection;
 use pool_oprf::client::OprfClient;
-use pool_oprf::online::MAX_BATCH_EVALUATIONS;
 use pool_oprf::preprocessing::Uid;
+use pool_oprf::voprf::VerifiedKey;
 use pool_prf::prf::PrfOutput;
 use rand::CryptoRng;
 
@@ -26,7 +26,26 @@ pub struct PsiClient {
 impl PsiClient {
     /// Announce a set size, then preprocess for it.
     pub async fn new(
+        conn: Connection,
+        set_size: usize,
+        rng: &mut impl CryptoRng,
+    ) -> Result<Self, PsiError> {
+        Self::with(conn, None, set_size, rng).await
+    }
+
+    /// A VOPRF: the client verifies the server's proofs against `pk`.
+    pub async fn new_voprf(
+        conn: Connection,
+        pk: &VerifiedKey,
+        set_size: usize,
+        rng: &mut impl CryptoRng,
+    ) -> Result<Self, PsiError> {
+        Self::with(conn, Some(pk), set_size, rng).await
+    }
+
+    async fn with(
         mut conn: Connection,
+        pk: Option<&VerifiedKey>,
         set_size: usize,
         rng: &mut impl CryptoRng,
     ) -> Result<Self, PsiError> {
@@ -43,7 +62,10 @@ impl PsiClient {
         let mut channel = ClientChannel::new(&mut conn).await?;
         channel.send_client_set_size(set_size as u64).await?;
 
-        let oprf = OprfClient::new(conn, set_size, rng).await?;
+        let oprf = match pk {
+            Some(pk) => OprfClient::new_voprf(conn, pk, set_size, rng).await?,
+            None => OprfClient::new(conn, set_size, rng).await?,
+        };
         Ok(Self {
             channel,
             oprf,
@@ -77,11 +99,11 @@ impl PsiClient {
             });
         }
 
-        // One round trip per chunk. The server derives the same count from the
-        // size it was told, so neither side has to signal when we are done.
+        // One request per batch. The server computes the same number of
+        // requests.
         let mut outputs: Vec<PrfOutput> = Vec::with_capacity(set.len());
-        for chunk in set.chunks(MAX_BATCH_EVALUATIONS) {
-            outputs.extend(self.oprf.evaluate_batch(&masked.tag, chunk).await?);
+        for batch in set.chunks(self.oprf.max_batch_evaluations()) {
+            outputs.extend(self.oprf.evaluate_batch(&masked.tag, batch).await?);
         }
 
         Ok(intersect(&outputs, &masked.elements))

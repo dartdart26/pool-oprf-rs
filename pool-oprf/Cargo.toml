@@ -11,10 +11,13 @@ license = "MIT"
 # its runtime, so it suits a server that preprocesses ahead of time and pays
 # for bandwidth.
 silent-ot = []
+# Testing helpers.
+testing = []
 
 [dependencies]
 pool-prf = { workspace = true }
 pool-eval = { workspace = true }
+pool-voprf = { workspace = true }
 cryprot-core = { workspace = true }
 cryprot-net = { workspace = true }
 cryprot-ot = { workspace = true }
@@ -33,13 +36,14 @@ tracing = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
+pool-oprf = { path = ".", features = ["testing"] }
 cryprot-net = { workspace = true, features = ["__testing"] }
-cryprot-core = { workspace = true, features = ["__testing"] }
+pool-voprf = { workspace = true, features = ["testing"] }
 bincode = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [[bench]]
-name = "online"
+name = "oprf"
 harness = false
 
 [lints]

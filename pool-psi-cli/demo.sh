@@ -2,13 +2,15 @@
 # Runs both halves against each other: a server holding samples/server-set.txt,
 # a client holding samples/client-set.txt.
 #
-# Usage: demo.sh [--silent-ot] [addr]
+# Usage: demo.sh [--silent-ot] [--voprf] [addr]
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
 features=()
 ot="IKNP OT extension"
+voprf=
+client_set=samples/client-set.txt
 addr=127.0.0.1:4433
 while (($#)); do
     case "$1" in
@@ -16,8 +18,12 @@ while (($#)); do
             features=(--features silent-ot)
             ot="silent OT"
             ;;
+        --voprf)
+            voprf=1
+            client_set=samples/client-set-voprf.txt
+            ;;
         -h | --help)
-            echo "usage: demo.sh [--silent-ot] [addr]"
+            echo "usage: demo.sh [--silent-ot] [--voprf] [addr]"
             exit 0
             ;;
         -*)
@@ -41,6 +47,12 @@ echo "preprocessing with $ot"
 # A real deployment keeps this: masked sets only mean anything under the key
 # that made them. The demo throws it away with the temporary directory.
 "$bin" keygen --out "$work/psi.key" >/dev/null
+
+lookup_args=()
+if [ -n "$voprf" ]; then
+    "$bin" public-key --psi-key "$work/psi.key" --out "$work/psi.pk" >/dev/null
+    lookup_args=(--pk "$work/psi.pk")
+fi
 
 echo "--- server -------------------------------------------------------"
 "$bin" serve \
@@ -69,8 +81,9 @@ echo
 echo "--- client -------------------------------------------------------"
 "$bin" lookup \
     --connect "$addr" \
-    --set samples/client-set.txt \
-    --cert samples/demo-cert.pem
+    --set "$client_set" \
+    --cert samples/demo-cert.pem \
+    "${lookup_args[@]}"
 
 echo
 echo "--- server, after ------------------------------------------------"
