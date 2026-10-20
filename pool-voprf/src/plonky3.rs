@@ -36,7 +36,8 @@ type Val = commitments::Element;
 
 // TODO: is this the right setting?
 type Challenge = BinomialExtensionField<Val, 4>;
-const CHALLENGE_DIMENSION: usize = <Challenge as BasedVectorSpace<Val>>::DIMENSION;
+/// The degree of the extension field the challenges come from.
+pub const CHALLENGE_DIMENSION: usize = <Challenge as BasedVectorSpace<Val>>::DIMENSION;
 
 type LeafHash = commitments::Sponge;
 
@@ -80,6 +81,12 @@ pub type Config = StarkConfig<Pcs, Challenge, Challenger>;
 
 /// A proof of any statement, under this configuration.
 pub type Proof = p3_uni_stark::Proof<Config>;
+
+/// The FRI parameters of every proof.
+pub const fn fri_parameters<M>(mmcs: M) -> FriParameters<M> {
+    // Plonky3's preset for zero knowledge.
+    FriParameters::new_benchmark_zk(mmcs)
+}
 
 /// Random columns masking the trace; at least the challenge dimension.
 const NUM_RANDOM_CODEWORDS: usize = CHALLENGE_DIMENSION;
@@ -138,7 +145,7 @@ impl Plonky3 {
             StdRng::from_rng(rng),
         );
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
-        let fri = FriParameters::new_benchmark_zk(challenge_mmcs);
+        let fri = fri_parameters(challenge_mmcs);
         let pcs = Pcs::new(
             Dft::default(),
             val_mmcs,
