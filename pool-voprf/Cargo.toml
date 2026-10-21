@@ -19,6 +19,7 @@ plonky3 = [
     "dep:p3-fri",
     "dep:p3-matrix",
     "dep:p3-merkle-tree",
+    "dep:p3-poseidon2",
     "dep:p3-poseidon2-air",
     "dep:p3-symmetric",
     "dep:p3-uni-stark",
@@ -44,6 +45,7 @@ p3-fri = { workspace = true, optional = true }
 p3-matrix = { workspace = true, optional = true }
 p3-maybe-rayon = { workspace = true, optional = true }
 p3-merkle-tree = { workspace = true, optional = true }
+p3-poseidon2 = { workspace = true, optional = true }
 p3-poseidon2-air = { workspace = true, optional = true }
 p3-symmetric = { workspace = true, optional = true }
 p3-uni-stark = { workspace = true, optional = true }

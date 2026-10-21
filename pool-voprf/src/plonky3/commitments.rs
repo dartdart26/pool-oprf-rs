@@ -12,7 +12,9 @@ pub mod pad;
 
 use crate::commitments::CommitmentRandomness;
 use core::{array, iter};
-use p3_baby_bear::{BabyBear, Poseidon2BabyBear, default_babybear_poseidon2_32};
+use p3_baby_bear::{
+    BabyBear, Poseidon2BabyBear, default_babybear_poseidon2_16, default_babybear_poseidon2_32,
+};
 use p3_field::PrimeField32;
 use p3_field::integers::QuotientMap;
 use p3_symmetric::{CryptographicHasher, PaddingFreeSponge};
@@ -49,12 +51,17 @@ pub fn concat<T, const A: usize, const B: usize, const C: usize>(a: [T; A], b: [
 }
 
 pub const WIDTH: usize = 32;
+pub const NARROW_WIDTH: usize = 16;
 pub const CAPACITY: usize = 8;
 pub const DIGEST_ELEMENTS: usize = CAPACITY;
 pub const RATE: usize = WIDTH - CAPACITY;
+pub const NARROW_RATE: usize = NARROW_WIDTH - CAPACITY;
 
 pub type Permutation = Poseidon2BabyBear<WIDTH>;
 pub type Sponge = PaddingFreeSponge<Permutation, WIDTH, RATE, DIGEST_ELEMENTS>;
+pub type NarrowPermutation = Poseidon2BabyBear<NARROW_WIDTH>;
+pub type NarrowSponge =
+    PaddingFreeSponge<NarrowPermutation, NARROW_WIDTH, NARROW_RATE, DIGEST_ELEMENTS>;
 
 pub fn permutation() -> Permutation {
     default_babybear_poseidon2_32()
@@ -62,6 +69,14 @@ pub fn permutation() -> Permutation {
 
 pub fn sponge() -> Sponge {
     Sponge::new(permutation())
+}
+
+pub fn narrow_permutation() -> NarrowPermutation {
+    default_babybear_poseidon2_16()
+}
+
+pub fn narrow_sponge() -> NarrowSponge {
+    NarrowSponge::new(narrow_permutation())
 }
 
 /// A commitment of one kind, to `LEN` elements. Both are in the type, such
@@ -85,8 +100,14 @@ impl<const DOMAIN: u32, const LEN: usize> Commitment<DOMAIN, LEN> {
         iter::once(Self::domain().into()).chain(elements)
     }
 
+    /// Hashes with the narrowest permutation the input fits.
     pub fn commit(elements: [Element; LEN]) -> Self {
-        Self(sponge().hash_iter(Self::input(elements)))
+        let input = Self::input(elements);
+        Self(if LEN < NARROW_RATE {
+            narrow_sponge().hash_iter(input)
+        } else {
+            sponge().hash_iter(input)
+        })
     }
 }
 

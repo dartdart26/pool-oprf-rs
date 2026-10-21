@@ -23,7 +23,7 @@
 use crate::plonky3::commitments::key::{KeyCommitment, PACKED_KEY_ELEMENTS, elements, pack_key};
 use crate::plonky3::commitments::{BITS_PER_ELEMENT, DIGEST_ELEMENTS};
 use crate::plonky3::constraints::common::KEY_BITS;
-use crate::plonky3::sponge::{PERMUTATION, PERMUTATION_COLS, eval_commitment, sponge_trace};
+use crate::plonky3::sponge::{WIDE, Wide};
 use crate::plonky3::{ROWS, Val};
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
 use p3_field::PrimeCharacteristicRing;
@@ -34,7 +34,7 @@ use pool_prf::prf::SecretKey;
 /// is the domain, the packed key, then zeros.
 const SPONGE: usize = KEY_BITS;
 const PACKED_KEY: usize = SPONGE + 1;
-pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATION_COLS;
+pub(crate) const NUM_COLS: usize = SPONGE + Wide::COLS;
 
 /// The rules for (K). Its public value is `pk`.
 #[derive(Default)]
@@ -45,7 +45,7 @@ impl KeyAir {
     pub fn row(sk: &SecretKey) -> Vec<Val> {
         let packed = pack_key(sk);
         let bits = sk.as_bits().iter().map(|&bit| Val::from_bool(bit == 1));
-        let hash = sponge_trace(KeyCommitment::input(elements(&packed)));
+        let hash = WIDE.trace(KeyCommitment::input(elements(&packed)));
         bits.chain(hash).collect()
     }
 
@@ -70,7 +70,7 @@ impl KeyAir {
             builder.assert_eq(row[PACKED_KEY + index], packed::<AB>(bits, index));
         }
         let domain = KeyCommitment::domain();
-        eval_commitment(builder, SPONGE, domain, PACKED_KEY_ELEMENTS, pk);
+        WIDE.eval_commitment(builder, SPONGE, domain, PACKED_KEY_ELEMENTS, pk);
     }
 }
 
@@ -85,7 +85,7 @@ impl BaseAir<Val> for KeyAir {
     }
 
     fn max_constraint_degree(&self) -> Option<usize> {
-        PERMUTATION.max_constraint_degree()
+        WIDE.max_constraint_degree()
     }
 
     fn num_public_values(&self) -> usize {
@@ -118,7 +118,7 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for KeyAir {
 mod tests {
     use super::*;
     use crate::plonky3::commitments::key::commit;
-    use crate::plonky3::sponge::{output, permutation};
+    use crate::plonky3::sponge::output;
     use p3_air::check_all_constraints;
     use p3_matrix::Matrix;
     use pool_prf::params::N;
@@ -131,7 +131,7 @@ mod tests {
         let trace = KeyAir::trace(&sk);
         let row = trace.row_slice(0).expect("a row");
         assert_eq!(
-            output(permutation(&row[SPONGE..]))[..DIGEST_ELEMENTS],
+            output(WIDE.permutation(&row[SPONGE..]))[..DIGEST_ELEMENTS],
             commit(&sk).0
         );
     }

@@ -71,8 +71,8 @@ jobs:
       - name: cargo test
         run: cargo test --locked --workspace --release ${{ matrix.features }}
 
-      - name: build benches
-        run: cargo build --locked --workspace --benches ${{ matrix.features }}
+      - name: run benches
+        run: cargo bench --locked --workspace ${{ matrix.features }}
 
   demo:
     name: demo (${{ matrix.ot }})

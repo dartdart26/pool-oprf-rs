@@ -40,7 +40,7 @@ use crate::commitments::CommitmentRandomness;
 use crate::plonky3::commitments::pad::{PadCommitment, elements};
 use crate::plonky3::commitments::{DIGEST_ELEMENTS, PAIR_ELEMENTS};
 use crate::plonky3::selectors::{select, selectors};
-use crate::plonky3::sponge::{PERMUTATION, PERMUTATION_COLS, eval_commitment, sponge_trace};
+use crate::plonky3::sponge::{NARROW, Narrow};
 use crate::plonky3::{ROWS, Val};
 use core::array;
 use p3_air::{Air, AirBuilder, BaseAir};
@@ -52,7 +52,7 @@ use std::borrow::Cow;
 /// pad, the random value, then zeros.
 const SPONGE: usize = 0;
 pub(crate) const PAD: usize = SPONGE + 1;
-pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATION_COLS;
+pub(crate) const NUM_COLS: usize = SPONGE + Narrow::COLS;
 /// `d^{v, k}_0 .. d^{v, k}_{Δ-1}`.
 pub(crate) const NUM_PUBLIC_VALUES: usize = DELTA * DIGEST_ELEMENTS;
 /// `s_0 .. s_{Δ-1}`.
@@ -68,7 +68,7 @@ impl PadsAir {
         let mut rows = Vec::new();
         for (&pad, &randomness) in pads.iter().zip(randomness) {
             let input = PadCommitment::input(elements(pad, randomness));
-            rows.extend(sponge_trace(input));
+            rows.extend(NARROW.trace(input));
         }
         rows
     }
@@ -86,7 +86,7 @@ impl PadsAir {
     /// `hash`.
     pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, hash: [AB::Expr; DIGEST_ELEMENTS]) {
         let domain = PadCommitment::domain();
-        eval_commitment(builder, SPONGE, domain, PAIR_ELEMENTS, hash);
+        NARROW.eval_commitment(builder, SPONGE, domain, PAIR_ELEMENTS, hash);
     }
 }
 
@@ -101,7 +101,7 @@ impl BaseAir<Val> for PadsAir {
     }
 
     fn max_constraint_degree(&self) -> Option<usize> {
-        PERMUTATION.max_constraint_degree()
+        NARROW.max_constraint_degree()
     }
 
     fn num_public_values(&self) -> usize {

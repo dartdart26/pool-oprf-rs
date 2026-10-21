@@ -29,7 +29,7 @@
 use crate::commitments::CommitmentRandomness;
 use crate::plonky3::commitments::DIGEST_ELEMENTS;
 use crate::plonky3::commitments::mask_sum::{MaskSumCommitment, VALUE_ELEMENTS, elements};
-use crate::plonky3::sponge::{PERMUTATION, PERMUTATION_COLS, eval_commitment, sponge_trace};
+use crate::plonky3::sponge::{WIDE, Wide};
 use crate::plonky3::{ROWS, Val};
 use p3_air::{Air, AirBuilder, BaseAir};
 use p3_matrix::dense::RowMajorMatrix;
@@ -40,7 +40,7 @@ use pool_prf::params::{RUNS_PER_EVALUATION, Zq};
 const SPONGE: usize = 0;
 pub(crate) const R_SIGMA: usize = SPONGE + 1;
 pub(crate) const RANDOMNESS: usize = R_SIGMA + RUNS_PER_EVALUATION;
-pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATION_COLS;
+pub(crate) const NUM_COLS: usize = SPONGE + Wide::COLS;
 
 /// The rules for (M).
 pub struct MaskSumAir;
@@ -51,7 +51,7 @@ impl MaskSumAir {
         r_sigma_sum: &[Zq; RUNS_PER_EVALUATION],
         randomness: CommitmentRandomness,
     ) -> Vec<Val> {
-        sponge_trace(MaskSumCommitment::input(elements(r_sigma_sum, randomness)))
+        WIDE.trace(MaskSumCommitment::input(elements(r_sigma_sum, randomness)))
     }
 
     /// The table - `ROWS` copies of the row.
@@ -65,7 +65,7 @@ impl MaskSumAir {
     /// The rules for (M) on the row, for `m^v`.
     pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, m: [AB::Expr; DIGEST_ELEMENTS]) {
         let domain = MaskSumCommitment::domain();
-        eval_commitment(builder, SPONGE, domain, VALUE_ELEMENTS, m);
+        WIDE.eval_commitment(builder, SPONGE, domain, VALUE_ELEMENTS, m);
     }
 }
 
@@ -80,7 +80,7 @@ impl BaseAir<Val> for MaskSumAir {
     }
 
     fn max_constraint_degree(&self) -> Option<usize> {
-        PERMUTATION.max_constraint_degree()
+        WIDE.max_constraint_degree()
     }
 
     fn num_public_values(&self) -> usize {
@@ -99,7 +99,7 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for MaskSumAir {
 mod tests {
     use super::*;
     use crate::plonky3::commitments::mask_sum::commit;
-    use crate::plonky3::sponge::{output, permutation};
+    use crate::plonky3::sponge::output;
     use core::array;
     use p3_air::check_all_constraints;
     use p3_field::PrimeCharacteristicRing;
@@ -120,7 +120,7 @@ mod tests {
         let trace = MaskSumAir::trace(&r_sigma_sum, randomness);
         let row = trace.row_slice(0).expect("a row");
         assert_eq!(
-            output(permutation(&row[SPONGE..]))[..DIGEST_ELEMENTS],
+            output(WIDE.permutation(&row[SPONGE..]))[..DIGEST_ELEMENTS],
             commit(&r_sigma_sum, randomness).0
         );
     }

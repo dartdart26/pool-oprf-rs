@@ -47,7 +47,7 @@
 use crate::commitments::CommitmentRandomness;
 use crate::plonky3::commitments::DIGEST_ELEMENTS;
 use crate::plonky3::commitments::masks::{MasksCommitment, VALUE_ELEMENTS, elements};
-use crate::plonky3::sponge::{PERMUTATION, PERMUTATION_COLS, eval_commitment, sponge_trace};
+use crate::plonky3::sponge::{WIDE, Wide};
 use crate::plonky3::{N_TABLE_ROWS, Val};
 use core::array;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
@@ -62,7 +62,7 @@ use std::borrow::Cow;
 pub(crate) const SK_I: usize = 0;
 const SPONGE: usize = SK_I + 1;
 pub(crate) const MASKS: usize = SPONGE + 1;
-pub(crate) const NUM_COLS: usize = SPONGE + PERMUTATION_COLS;
+pub(crate) const NUM_COLS: usize = SPONGE + Wide::COLS;
 
 /// Where the periodic columns start: `b̄_i`, `c^v_{0, i}`, then `c^v_{1, i}`.
 pub(crate) const B_BAR: usize = 0;
@@ -100,7 +100,7 @@ impl ServerMasksAir {
             let i = row.min(N - 1);
             let values = elements(&masks[i], ot_blocks[i]);
             rows.push(Val::from_u8(sk[i]));
-            rows.extend(sponge_trace(MasksCommitment::input(values)));
+            rows.extend(WIDE.trace(MasksCommitment::input(values)));
         }
         RowMajorMatrix::new(rows, NUM_COLS)
     }
@@ -119,7 +119,7 @@ impl ServerMasksAir {
         let c_b_i =
             array::from_fn(|e| c_0[e].clone() + b_i.clone() * (c_1[e].clone() - c_0[e].clone()));
         let domain = MasksCommitment::domain();
-        eval_commitment(builder, SPONGE, domain, VALUE_ELEMENTS, c_b_i);
+        WIDE.eval_commitment(builder, SPONGE, domain, VALUE_ELEMENTS, c_b_i);
     }
 }
 
@@ -134,7 +134,7 @@ impl BaseAir<Val> for ServerMasksAir {
     }
 
     fn max_constraint_degree(&self) -> Option<usize> {
-        PERMUTATION.max_constraint_degree()
+        WIDE.max_constraint_degree()
     }
 
     fn num_periodic_columns(&self) -> usize {
