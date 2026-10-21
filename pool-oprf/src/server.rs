@@ -16,7 +16,7 @@ use crate::preprocessing::{
 use crate::voprf::{self, MAX_VOPRF_BATCH_EVALUATIONS, Proof, ProveError, PublicKey};
 use cryprot_net::Connection;
 use pool_prf::prf::SecretKey;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
@@ -54,7 +54,7 @@ impl OprfServer {
             conn,
             channel,
             sk: Arc::clone(&self.sk),
-            state,
+            state: Arc::new(Mutex::new(state)),
         })
     }
 
@@ -79,7 +79,13 @@ pub struct OprfSession {
     conn: Connection,
     channel: ServerChannel,
     sk: Arc<SecretKey>,
-    state: ServerState,
+    state: Arc<Mutex<ServerState>>,
+}
+
+fn lock(state: &Mutex<ServerState>) -> MutexGuard<'_, ServerState> {
+    state
+        .lock()
+        .expect("a panic while serving poisoned the session")
 }
 
 impl OprfSession {
@@ -92,8 +98,10 @@ impl OprfSession {
     ///
     /// [`OprfClient::renew`]: crate::client::OprfClient::renew
     pub async fn renew(&mut self, evaluations: usize) -> Result<Uid, ServerError> {
-        self.state = preproc_server(&mut self.conn, &self.sk, tau_for(evaluations)).await?;
-        Ok(*self.state.uid())
+        let state = preproc_server(&mut self.conn, &self.sk, tau_for(evaluations)).await?;
+        let uid = *state.uid();
+        self.state = Arc::new(Mutex::new(state));
+        Ok(uid)
     }
 
     /// Answer one request. Returns `false` once the client closes the stream.
@@ -101,10 +109,11 @@ impl OprfSession {
         let Some(req) = self.channel.next_request().await? else {
             return Ok(false);
         };
-        if req.uid != *self.state.uid() {
-            return Err(BlindEvalError::UnknownSession { uid: req.uid }.into());
-        }
-        let resp = blind_eval(&mut self.state, &self.sk, &req)?;
+        let state = Arc::clone(&self.state);
+        let sk = Arc::clone(&self.sk);
+        let resp = tokio::task::spawn_blocking(move || blind_eval(&mut lock(&state), &sk, &req))
+            .await
+            .expect("serving panicked")?;
         self.channel.respond(resp).await?;
         Ok(true)
     }
@@ -116,20 +125,20 @@ impl OprfSession {
     }
 
     pub fn remaining_evaluations(&self) -> usize {
-        evaluations_for(self.state.remaining_runs())
+        evaluations_for(lock(&self.state).remaining_runs())
     }
 
     /// Most evaluations one request may carry: [`MAX_BATCH_EVALUATIONS`] or
     /// [`MAX_VOPRF_BATCH_EVALUATIONS`] for a VOPRF.
     pub fn max_batch_evaluations(&self) -> usize {
-        match self.state.voprf() {
+        match lock(&self.state).voprf() {
             Some(_) => MAX_VOPRF_BATCH_EVALUATIONS,
             None => MAX_BATCH_EVALUATIONS,
         }
     }
 
-    pub fn uid(&self) -> &Uid {
-        self.state.uid()
+    pub fn uid(&self) -> Uid {
+        *lock(&self.state).uid()
     }
 
     pub fn key(&self) -> &SecretKey {
@@ -230,7 +239,7 @@ mod tests {
         let mut session = session.unwrap();
 
         let req = zero_rows([0xff; LAMBDA_BYTES], H_ROWS);
-        assert_ne!(&req.uid, session.uid());
+        assert_ne!(req.uid, session.uid());
 
         tokio::select! {
             served = session.serve_next() => {

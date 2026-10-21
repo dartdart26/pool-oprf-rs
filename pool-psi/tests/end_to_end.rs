@@ -35,7 +35,7 @@ async fn client_learns_the_intersection() {
 
     let (client, mut session) = setup(client_set.len(), 1).await;
     assert_eq!(session.set_size(), client_set.len());
-    assert_eq!(client.uid(), session.uid());
+    assert_eq!(client.uid(), &session.uid());
 
     let (indices, ()) = tokio::try_join!(
         client.intersect(&client_set),

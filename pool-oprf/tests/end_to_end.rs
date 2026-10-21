@@ -143,7 +143,7 @@ async fn networked_oprf_matches_plaintext_prf() {
         let mut client = client.unwrap();
         let mut session = session.unwrap();
 
-        assert_eq!(client.uid(), session.uid());
+        assert_eq!(client.uid(), &session.uid());
         assert_eq!(client.remaining_evaluations(), evaluations);
         assert_eq!(session.remaining_evaluations(), evaluations);
 
@@ -236,7 +236,7 @@ async fn a_renewed_session_keeps_serving() {
         assert_eq!(new_uid, session_uid.unwrap(), "both sides agree on the uid");
         assert_ne!(new_uid, old_uid, "renewal starts a new session");
         assert_eq!(client.remaining_evaluations(), 1);
-        assert_eq!(session.uid(), &new_uid, "the spent session is replaced");
+        assert_eq!(session.uid(), new_uid, "the spent session is replaced");
         assert_eq!(session.remaining_evaluations(), 1);
 
         // The evaluation channel from before the renewal still works.

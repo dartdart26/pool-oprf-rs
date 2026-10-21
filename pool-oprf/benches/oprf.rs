@@ -336,8 +336,10 @@ fn voprf_report(sk: &SecretKey) {
             "VOPRF",
         );
         row2("  time (end to end)", ms(oprf_time, 1), ms(voprf_time, 1));
-        row2("  π_preproc prove", "", ms(prove, 1));
-        row2("  π_preproc verify", "", ms(verify, 1));
+        // The VOPRF's end-to-end time includes proving and verifying
+        // π_preproc.
+        row2("    incl. π_preproc prove", "", ms(prove, 1));
+        row2("    incl. π_preproc verify", "", ms(verify, 1));
         row2("  π_preproc", "", format!("{:.1} kB", kb(bytes)));
         states = Some((oprf_client, oprf_server, voprf_client, voprf_server));
     }
@@ -353,19 +355,21 @@ fn voprf_report(sk: &SecretKey) {
         us_or_ms(oprf.request, n),
         us_or_ms(voprf.request, n),
     );
+    // The VOPRF's BlindEval proves π_online and its Finalize verifies it:
+    // those, measured on their own, sit under each.
+    let (prove, verify) = online_proof();
     row2(
         "  BlindEval",
         us_or_ms(oprf.blind_eval, n),
         us_or_ms(voprf.blind_eval, n),
     );
+    row2("    incl. π_online prove", "", ms(prove, 1));
     row2(
         "  Finalize",
         us_or_ms(oprf.finalize, n),
         us_or_ms(voprf.finalize, n),
     );
-    let (prove, verify) = online_proof();
-    row2("  π_online prove", "", ms(prove, 1));
-    row2("  π_online verify", "", ms(verify, 1));
+    row2("    incl. π_online verify", "", ms(verify, 1));
     // A VOPRF response is the OPRF response with π_online added.
     row2(
         "  π_online",
