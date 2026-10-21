@@ -100,7 +100,10 @@ impl OprfClient {
     pub async fn evaluate(&mut self, tag: &[u8], x: &[u8]) -> Result<PrfOutput, ClientError> {
         let (req, fin) = request(&mut self.state, tag, x)?;
         let resp = self.channel.exchange(req).await?;
-        Ok(finalize(&fin, &resp)?)
+        let output = tokio::task::spawn_blocking(move || finalize(&fin, &resp))
+            .await
+            .expect("finalizing panicked");
+        Ok(output?)
     }
 
     /// Evaluate several inputs under one tag in a single round trip,
@@ -116,7 +119,11 @@ impl OprfClient {
     ) -> Result<Vec<PrfOutput>, ClientError> {
         let (req, fin) = request_batch(&mut self.state, tag, inputs)?;
         let resp = self.channel.exchange(req).await?;
-        Ok(finalize_batch(&fin, &resp)?)
+        // As in `evaluate`.
+        let outputs = tokio::task::spawn_blocking(move || finalize_batch(&fin, &resp))
+            .await
+            .expect("finalizing panicked");
+        Ok(outputs?)
     }
 
     pub fn remaining_evaluations(&self) -> usize {

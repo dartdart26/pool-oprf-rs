@@ -302,7 +302,10 @@ impl<'a> ClientPreprocessing<'a> {
                 .map(|(c, &m)| EvaluationStatement { c, m })
                 .collect(),
         };
-        Plonky3::new().verify(&statement, &message.proof)?;
+        let proof = message.proof;
+        tokio::task::spawn_blocking(move || Plonky3::new().verify(&statement, &proof))
+            .await
+            .expect("verifying panicked")?;
         Ok(ClientVoprf {
             pk: *self.pk,
             m: message.m,
