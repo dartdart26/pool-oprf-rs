@@ -51,8 +51,9 @@
 //!
 //! # 2. The values they share
 //!
-//! Some constraints share a value. Each keeps it in its own columns, so a
-//! rule makes the copies equal.
+//! Some constraints share a value. (A) reads `sk` from (K)'s key bits. The
+//! others each keep the value in their own columns, so a rule makes the
+//! copies equal.
 
 use crate::plonky3::commitments::DIGEST_ELEMENTS;
 use crate::plonky3::commitments::key::KeyCommitment;
@@ -240,28 +241,27 @@ impl<AB: AirBuilder<F = Val>> Air<AB> for OnlineAir {
             })
         });
 
+        // (K)'s key bits, which (A) reads too.
+        let sk: [AB::Expr; KEY_BITS] = {
+            let main = builder.main();
+            let row = main.current_slice();
+            array::from_fn(|i| row[KEY + i].into())
+        };
+
         // 1. The constraints
         KeyAir::rules(&mut columns(builder, KEY..MASK_SUM), pk);
         MaskSumAir::rules(&mut columns(builder, MASK_SUM..SUM), m);
-        SumAir::rules(&mut columns(builder, SUM..RESPONSE), e);
+        SumAir::rules(&mut columns(builder, SUM..RESPONSE), sk, e);
         ResponseAir::rules(&mut columns(builder, RESPONSE..PADS), j, y_j);
         PadsAir::rules(&mut columns(builder, PADS..NUM_COLS), d);
 
         // 2. The values they share
         let main = builder.main();
         let row = main.current_slice();
-        let key_columns = &row[KEY..MASK_SUM];
         let mask_sum_columns = &row[MASK_SUM..SUM];
         let sum_columns = &row[SUM..RESPONSE];
         let response_columns = &row[RESPONSE..PADS];
         let pads_columns = &row[PADS..NUM_COLS];
-
-        // The key bits are the first columns of (K) and of (A).
-        let key_sk = &key_columns[..KEY_BITS];
-        let sum_sk = &sum_columns[..KEY_BITS];
-        for (&key_bit, &sum_bit) in key_sk.iter().zip(sum_sk) {
-            builder.assert_eq(sum_bit, key_bit);
-        }
 
         // `r̃^{v, k}_Σ` of the row's run is one column in (A) and one of (M)'s
         // `RUNS_PER_EVALUATION` columns, which `u` picks.
@@ -352,16 +352,16 @@ mod tests {
         check_all_constraints(air, &table, public_values, None).is_ok()
     }
 
-    /// Whether each constraint holds on run `k`'s rows alone.
     fn each_holds_alone(
         key: &[Val],
         mask_sum: &[Val],
         rows: &RunRows,
         statement: &Online,
         k: usize,
+        sk: &SecretKey,
     ) -> bool {
         let run = &statement.runs[k];
-        let e = a_sum::public_values(&run.e);
+        let e = a_sum::standalone_public_values(sk, &run.e);
         let y = r_response::public_values(&run.y);
         let d = p_pads::public_values(&in_response_order(&run.d, run.b_bar_prime));
         holds_alone(&KeyAir, key, &statement.pk.0)
@@ -406,7 +406,8 @@ mod tests {
         }
     }
 
-    /// Each constraint holds on its own columns, so only the rule that ties the key bits refuses it.
+    /// (A) holds for another key on its own, but in the table it reads (K)'s
+    /// key bits.
     #[test]
     fn a_sum_with_another_key_is_refused() {
         let (mut statement, witness) = random(2);
@@ -430,7 +431,8 @@ mod tests {
             &mask_sum,
             &runs[LAST],
             &statement,
-            LAST
+            LAST,
+            &other
         ));
 
         // Together they do not.
@@ -463,7 +465,8 @@ mod tests {
             &mask_sum,
             &runs[LAST],
             &statement,
-            LAST
+            LAST,
+            &witness.sk
         ));
 
         // Together they do not.
@@ -494,7 +497,8 @@ mod tests {
             &mask_sum,
             &runs[LAST],
             &statement,
-            LAST
+            LAST,
+            &witness.sk
         ));
 
         // Together they do not.
@@ -525,7 +529,8 @@ mod tests {
             &mask_sum,
             &runs[LAST],
             &statement,
-            LAST
+            LAST,
+            &witness.sk
         ));
 
         // Together they do not.

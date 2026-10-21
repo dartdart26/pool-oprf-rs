@@ -2,7 +2,8 @@ use crate::plonky3::Val;
 use p3_field::integers::QuotientMap;
 use pool_prf::params::{N, ZqAccum};
 
-/// (K) and (A) start with the key bits `sk_0 .. sk_{n-1}`.
+/// (K) starts with the key bits `sk_0 .. sk_{n-1}`, which other constraints
+/// read from there.
 pub(crate) const KEY_BITS: usize = N;
 
 /// The lowest `count` bits of `value`, as columns.

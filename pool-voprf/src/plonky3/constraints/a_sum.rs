@@ -5,6 +5,7 @@
 //! ```
 //!
 //! (A) takes `sk` and `r̃^{v, k}_Σ` as given - (K) and (M) pin them down.
+//! `sk` is not in (A)'s columns: the caller passes it in as (K)'s key bits.
 //!
 //! `e^{v, k}` is public.
 //!
@@ -13,12 +14,12 @@
 //! One row holds all of (A) and every row is the same. The bits are lowest
 //! first.
 //!
-//! | row      | key (`n`)          | mask sum (1) | `ã^{v, k}_Σ` (`LOG_Q`) | quotient (`QUOTIENT_BITS`) |
-//! |----------|--------------------|--------------|------------------------|----------------------------|
-//! | `0`      | `sk_0 .. sk_{n-1}` | `r̃^{v, k}_Σ` | bits                   | bits                       |
-//! | `1`      | `sk_0 .. sk_{n-1}` | `r̃^{v, k}_Σ` | bits                   | bits                       |
-//! | …        | …                  | …            | …                      | …                          |
-//! | `ROWS-1` | `sk_0 .. sk_{n-1}` | `r̃^{v, k}_Σ` | bits                   | bits                       |
+//! | row      | mask sum (1) | `ã^{v, k}_Σ` (`LOG_Q`) | quotient (`QUOTIENT_BITS`) |
+//! |----------|--------------|------------------------|----------------------------|
+//! | `0`      | `r̃^{v, k}_Σ` | bits                   | bits                       |
+//! | `1`      | `r̃^{v, k}_Σ` | bits                   | bits                       |
+//! | …        | …            | …                      | …                          |
+//! | `ROWS-1` | `r̃^{v, k}_Σ` | bits                   | bits                       |
 //!
 //! # 1. `sk_i·e^{v, k}_i`
 //!
@@ -38,6 +39,7 @@
 
 use crate::plonky3::constraints::common::{KEY_BITS, bits};
 use crate::plonky3::{N_BITS, ROWS, Val};
+use core::array;
 use p3_air::utils::pack_bits_le;
 use p3_air::{Air, AirBuilder, BaseAir, WindowAccess};
 use p3_field::PrimeField32;
@@ -51,8 +53,8 @@ const A_SIGMA_BITS: usize = LOG_Q as usize;
 /// The quotient is at most `n`.
 const QUOTIENT_BITS: usize = N_BITS;
 
-/// Where each part of the row starts, after the key bits.
-pub(crate) const R_SIGMA: usize = KEY_BITS;
+/// Where each part of the row starts.
+pub(crate) const R_SIGMA: usize = 0;
 pub(crate) const A_SIGMA: usize = R_SIGMA + 1;
 pub(crate) const QUOTIENT: usize = A_SIGMA + A_SIGMA_BITS;
 pub(crate) const NUM_COLS: usize = QUOTIENT + QUOTIENT_BITS;
@@ -65,16 +67,15 @@ pub struct SumAir;
 
 impl SumAir {
     pub fn row(sk: &SecretKey, r_sigma_sum: Zq, e: &[Zq; N]) -> Vec<Val> {
-        let sk = sk.as_bits();
         let first_sum: ZqAccum = sk
+            .as_bits()
             .iter()
             .zip(e)
             .map(|(&sk_i, &e_i)| if sk_i == 0 { 0 } else { ZqAccum::from(e_i) })
             .sum();
         // Σ_i sk_i·e^{v, k}_i + r̃^{v, k}_Σ
         let sum = first_sum + ZqAccum::from(r_sigma_sum);
-        let mut row: Vec<Val> = sk.iter().map(|&bit| Val::from_int(bit)).collect();
-        row.push(Val::from_int(r_sigma_sum));
+        let mut row = vec![Val::from_int(r_sigma_sum)];
         row.extend(bits(reduce_q(sum).into(), A_SIGMA_BITS));
         row.extend(bits(quotient_q(sum), QUOTIENT_BITS));
         row
@@ -85,19 +86,22 @@ impl SumAir {
         RowMajorMatrix::new(Self::row(sk, r_sigma_sum, e).repeat(ROWS), NUM_COLS)
     }
 
-    pub fn rules<AB: AirBuilder<F = Val>>(builder: &mut AB, e: [AB::Expr; N]) {
+    pub fn rules<AB: AirBuilder<F = Val>>(
+        builder: &mut AB,
+        sk: [AB::Expr; KEY_BITS],
+        e: [AB::Expr; N],
+    ) {
         let main = builder.main();
         let row = main.current_slice();
-        let sk = &row[..KEY_BITS];
         let r_sigma_sum: AB::Expr = row[R_SIGMA].into();
         let a_sigma_bits = &row[A_SIGMA..QUOTIENT];
         let quotient_bits = &row[QUOTIENT..NUM_COLS];
-        for &bit in sk.iter().chain(a_sigma_bits).chain(quotient_bits) {
+        for &bit in a_sigma_bits.iter().chain(quotient_bits) {
             builder.assert_bool(bit);
         }
 
         // sk_i·e^{v, k}_i
-        let terms = sk.iter().zip(e).map(|(&sk_i, e_i)| sk_i * e_i);
+        let terms = sk.into_iter().zip(e).map(|(sk_i, e_i)| sk_i * e_i);
         // S = Σ_i sk_i·e^{v, k}_i + r̃^{v, k}_Σ
         let s = terms.sum::<AB::Expr>() + r_sigma_sum;
 
@@ -117,15 +121,18 @@ impl BaseAir<Val> for SumAir {
         vec![]
     }
 
+    /// On its own, (A) takes `e^{v, k}` and the key bits as public values.
     fn num_public_values(&self) -> usize {
-        N
+        N + KEY_BITS
     }
 }
 
 impl<AB: AirBuilder<F = Val>> Air<AB> for SumAir {
     fn eval(&self, builder: &mut AB) {
-        let e: [AB::PublicVar; N] = builder.public_values().try_into().expect("e");
-        Self::rules(builder, e.map(Into::into));
+        let public = builder.public_values();
+        let e = array::from_fn(|i| public[i].into());
+        let sk = array::from_fn(|i| public[N + i].into());
+        Self::rules(builder, sk, e);
     }
 }
 
@@ -133,10 +140,16 @@ pub fn public_values(e: &[Zq; N]) -> [Val; N] {
     e.map(Val::from_int)
 }
 
+/// The public values of (A) on its own: `e^{v, k}`, then the key bits.
+#[cfg(test)]
+pub fn standalone_public_values(sk: &SecretKey, e: &[Zq; N]) -> Vec<Val> {
+    let bits = sk.as_bits().iter().map(|&bit| Val::from_int(bit));
+    public_values(e).into_iter().chain(bits).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::array;
     use p3_air::{ConstraintReport, check_all_constraints};
     use p3_field::PrimeCharacteristicRing;
     use p3_matrix::Matrix;
@@ -177,9 +190,8 @@ mod tests {
         corners
     }
 
-    /// Runs the rules over `trace` for `e^{v, k}`.
-    fn report(trace: &RowMajorMatrix<Val>, e: &[Zq; N]) -> ConstraintReport {
-        check_all_constraints(&SumAir, trace, &public_values(e), None)
+    fn report(trace: &RowMajorMatrix<Val>, sk: &SecretKey, e: &[Zq; N]) -> ConstraintReport {
+        check_all_constraints(&SumAir, trace, &standalone_public_values(sk, e), None)
     }
 
     /// `ã^{v, k}_Σ` as the trace holds it, from its bits.
@@ -196,7 +208,7 @@ mod tests {
     fn the_rules_hold_at_every_corner() {
         for (sk, r_sigma_sum, e) in corners() {
             let trace = SumAir::trace(&sk, r_sigma_sum, &e);
-            assert!(report(&trace, &e).is_ok());
+            assert!(report(&trace, &sk, &e).is_ok());
         }
     }
 
@@ -221,7 +233,7 @@ mod tests {
             let mut changed = e;
             changed[i] ^= 1;
             assert_eq!(
-                report(&trace, &changed).is_ok(),
+                report(&trace, &sk, &changed).is_ok(),
                 sk.as_bits()[i] == 0,
                 "coordinate {i}"
             );
@@ -235,16 +247,16 @@ mod tests {
         let sk = SecretKey::from_bits([0; N]).expect("bits");
         let e = [0; N];
         let mut trace = SumAir::trace(&sk, 2, &e);
-        assert!(report(&trace, &e).is_ok());
+        assert!(report(&trace, &sk, &e).is_ok());
         for row in trace.values.chunks_mut(NUM_COLS) {
             assert_eq!(row[A_SIGMA..A_SIGMA + 2], [Val::ZERO, Val::ONE]);
             row[A_SIGMA] = Val::TWO;
             row[A_SIGMA + 1] = Val::ZERO;
         }
-        let failures = report(&trace, &e).failures;
+        let failures = report(&trace, &sk, &e).failures;
         assert!(!failures.is_empty());
         assert!(
-            failures.iter().all(|failure| failure.constraint == N),
+            failures.iter().all(|failure| failure.constraint == 0),
             "{failures:?}"
         );
     }
@@ -257,6 +269,6 @@ mod tests {
             // flip a bit
             row[A_SIGMA] = Val::ONE - row[A_SIGMA];
         }
-        assert!(!report(&trace, &e).is_ok());
+        assert!(!report(&trace, &sk, &e).is_ok());
     }
 }
