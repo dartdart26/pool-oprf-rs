@@ -31,6 +31,8 @@ use pool_prf::params::N;
 use rand::rngs::StdRng;
 use rand::{CryptoRng, SeedableRng};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+#[cfg(feature = "parallel")]
+use std::sync::LazyLock;
 
 type Val = commitments::Element;
 
@@ -159,13 +161,38 @@ impl Plonky3 {
         }
     }
 
-    /// Run Plonky3's verifier, which it says may panic on a malformed proof
-    /// and asks callers to catch.
+    /// Run Plonky3's prover on [`POOL`].
+    pub(super) fn proved(
+        prove: impl FnOnce() -> Result<Proof, ProvingError<PcsProverError<Config>>> + Send,
+    ) -> Result<Proof, ProveError> {
+        on_pool(prove).map_err(ProveError::Prover)
+    }
+
+    /// Run Plonky3's verifier on [`POOL`]. Plonky3 says it may panic on a
+    /// malformed proof and asks callers to catch.
     pub(super) fn verified(
-        check: impl FnOnce() -> Result<(), VerificationError<PcsError<Config>>>,
+        check: impl FnOnce() -> Result<(), VerificationError<PcsError<Config>>> + Send,
     ) -> Result<(), VerifyError> {
-        catch_unwind(AssertUnwindSafe(check))
+        on_pool(|| catch_unwind(AssertUnwindSafe(check)))
             .map_err(|_| VerifyError::Malformed)?
             .map_err(VerifyError::Invalid)
     }
+}
+
+#[cfg(feature = "parallel")]
+static POOL: LazyLock<rayon::ThreadPool> = LazyLock::new(|| {
+    rayon::ThreadPoolBuilder::new()
+        .thread_name(|i| format!("plonky3-{i}"))
+        .build()
+        .expect("starting Plonky3's threads")
+});
+
+#[cfg(feature = "parallel")]
+fn on_pool<R: Send>(work: impl FnOnce() -> R + Send) -> R {
+    POOL.install(work)
+}
+
+#[cfg(not(feature = "parallel"))]
+fn on_pool<R>(work: impl FnOnce() -> R) -> R {
+    work()
 }

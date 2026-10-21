@@ -21,8 +21,10 @@ impl ProofSystem<SetupStatement<KeyCommitment>> for Plonky3 {
         if !statement.holds_for(sk) {
             return Err(ProveError::WrongWitness);
         }
-        let trace = KeyAir::trace(sk);
-        prove(&self.config, &KeyAir, trace, &statement.pk.0).map_err(ProveError::Prover)
+        Plonky3::proved(|| {
+            let trace = KeyAir::trace(sk);
+            prove(&self.config, &KeyAir, trace, &statement.pk.0)
+        })
     }
 
     fn verify(

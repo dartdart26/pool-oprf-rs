@@ -71,8 +71,13 @@ jobs:
       - name: cargo test
         run: cargo test --locked --workspace --release ${{ matrix.features }}
 
+      # The report goes to the job summary, on the run's page.
       - name: run benches
-        run: cargo bench --locked --workspace ${{ matrix.features }}
+        shell: bash
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo bench --locked --workspace ${{ matrix.features }} | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   demo:
     name: demo (${{ matrix.ot }})

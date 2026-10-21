@@ -301,9 +301,10 @@ impl ProofSystem<Online> for Plonky3 {
         if !statement.holds_for(witness) {
             return Err(ProveError::WrongWitness);
         }
-        let trace = OnlineAir::trace(statement, witness);
-        prove(&self.config, &OnlineAir, trace, &public_values(statement))
-            .map_err(ProveError::Prover)
+        Plonky3::proved(|| {
+            let trace = OnlineAir::trace(statement, witness);
+            prove(&self.config, &OnlineAir, trace, &public_values(statement))
+        })
     }
 
     fn verify(&self, statement: &Online, proof: &Proof) -> Result<(), VerifyError> {

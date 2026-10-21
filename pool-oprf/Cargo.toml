@@ -17,7 +17,7 @@ testing = []
 [dependencies]
 pool-prf = { workspace = true }
 pool-eval = { workspace = true }
-pool-voprf = { workspace = true }
+pool-voprf = { workspace = true, features = ["parallel"] }
 cryprot-core = { workspace = true }
 cryprot-net = { workspace = true }
 cryprot-ot = { workspace = true }

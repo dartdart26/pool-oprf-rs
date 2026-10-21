@@ -26,7 +26,7 @@ plonky3 = [
 ]
 testing = ["dep:rand"]
 # Multithreaded proving for the plonky3 backend.
-parallel = ["plonky3", "p3-maybe-rayon/parallel"]
+parallel = ["plonky3", "dep:rayon", "p3-maybe-rayon/parallel"]
 
 [dependencies]
 pool-prf = { workspace = true }
@@ -35,6 +35,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 
 rand = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
 p3-air = { workspace = true, optional = true }
 p3-baby-bear = { workspace = true, optional = true }
 p3-challenger = { workspace = true, optional = true }

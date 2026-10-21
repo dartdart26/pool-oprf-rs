@@ -315,8 +315,10 @@ impl ProofSystem<Preprocessing> for Plonky3 {
             return Err(ProveError::WrongWitness);
         }
         let air = PreprocessingAir::new(statement);
-        let trace = PreprocessingAir::trace(witness);
-        prove(&self.config, &air, trace, &air.public).map_err(ProveError::Prover)
+        Plonky3::proved(|| {
+            let trace = PreprocessingAir::trace(witness);
+            prove(&self.config, &air, trace, &air.public)
+        })
     }
 
     fn verify(&self, statement: &Preprocessing, proof: &Proof) -> Result<(), VerifyError> {
