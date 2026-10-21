@@ -143,7 +143,7 @@ async fn networked_oprf_matches_plaintext_prf() {
         let mut client = client.unwrap();
         let mut session = session.unwrap();
 
-        assert_eq!(client.uid(), &session.uid());
+        assert_eq!(client.uid(), session.uid());
         assert_eq!(client.remaining_evaluations(), evaluations);
         assert_eq!(session.remaining_evaluations(), evaluations);
 
@@ -221,7 +221,7 @@ async fn a_renewed_session_keeps_serving() {
         );
         let mut client = client.unwrap();
         let mut session = session.unwrap();
-        let old_uid = *client.uid();
+        let old_uid = client.uid();
 
         // Spend the session.
         let (first, served) = tokio::join!(client.evaluate(TAG, b"alice"), session.serve_next());

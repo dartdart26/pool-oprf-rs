@@ -23,7 +23,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
-use zeroize::Zeroize;
 
 /// The TLS key exchange this binary was built with.
 #[cfg(s2n_quic_enable_pq_tls)]
@@ -301,22 +300,14 @@ fn read_pk(path: &Path) -> Result<VerifiedKey> {
 }
 
 fn read_key(path: &Path) -> Result<SecretKey> {
-    let mut bytes =
+    let bytes =
         std::fs::read(path).with_context(|| format!("reading the key {}", path.display()))?;
     let read = bytes.len();
-    let mut bits = [0u8; N];
-    if read == N {
-        bits.copy_from_slice(&bytes);
-    }
-    bytes.zeroize();
-
-    if read != N {
+    let Ok(bits) = <[u8; N]>::try_from(bytes) else {
         bail!("{} is {read} bytes, expected {N}", path.display());
-    }
-    let key = SecretKey::from_bits(bits)
-        .with_context(|| format!("{} is not a key: every byte must be a bit", path.display()));
-    bits.zeroize();
-    key
+    };
+    SecretKey::from_bits(bits)
+        .with_context(|| format!("{} is not a key: every byte must be a bit", path.display()))
 }
 
 fn read_pem(path: &Path) -> Result<String> {

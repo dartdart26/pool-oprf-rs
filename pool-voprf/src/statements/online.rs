@@ -18,7 +18,6 @@ use crate::traits::{Commitment, Constraint, Statement};
 use core::array;
 use pool_prf::params::{DELTA, N, RUNS_PER_EVALUATION, Zdelta, Zp, Zq};
 use pool_prf::prf::SecretKey;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct OnlineStatement<PK, M, D> {
@@ -39,14 +38,14 @@ pub struct RunStatement<D> {
     pub y: [Zp; DELTA],
 }
 
-#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone)]
 pub struct OnlineWitness {
     pub sk: SecretKey,
     pub m_randomness: CommitmentRandomness,
     pub runs: [RunWitness; RUNS_PER_EVALUATION],
 }
 
-#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone)]
 pub struct RunWitness {
     /// `r̃^{v, k}_Σ`.
     pub r_sigma_sum: Zq,

@@ -1499,7 +1499,6 @@ dependencies = [
  "s2n-quic",
  "s2n-tls",
  "tokio",
- "zeroize",
 ]
 
 [[package]]
@@ -1526,7 +1525,6 @@ dependencies = [
  "rand",
  "serde",
  "thiserror",
- "zeroize",
 ]
 
 [[package]]

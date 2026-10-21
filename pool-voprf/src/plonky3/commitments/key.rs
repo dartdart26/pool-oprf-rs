@@ -8,7 +8,6 @@ use crate::plonky3::commitments::{BITS_PER_ELEMENT, Commitment, Element};
 use p3_field::integers::QuotientMap;
 use pool_prf::params::N;
 use pool_prf::prf::SecretKey;
-use zeroize::Zeroizing;
 
 /// `N` bits, [`BITS_PER_ELEMENT`] per element, rounded up. The last element
 /// is padded with zero bits.
@@ -18,8 +17,8 @@ pub const PACKED_KEY_ELEMENTS: usize = N.div_ceil(BITS_PER_ELEMENT);
 pub type KeyCommitment = Commitment<{ Domain::Key as u32 }, PACKED_KEY_ELEMENTS>;
 
 /// The key as [`PACKED_KEY_ELEMENTS`] numbers of [`BITS_PER_ELEMENT`] bits.
-pub fn pack_key(sk: &SecretKey) -> Zeroizing<[u32; PACKED_KEY_ELEMENTS]> {
-    let mut packed = Zeroizing::new([0u32; PACKED_KEY_ELEMENTS]);
+pub fn pack_key(sk: &SecretKey) -> [u32; PACKED_KEY_ELEMENTS] {
+    let mut packed = [0u32; PACKED_KEY_ELEMENTS];
     for (element, bits) in packed.iter_mut().zip(sk.as_bits().chunks(BITS_PER_ELEMENT)) {
         for (position, &bit) in bits.iter().enumerate() {
             *element |= u32::from(bit) << position;
