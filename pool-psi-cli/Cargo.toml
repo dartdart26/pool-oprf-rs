@@ -20,7 +20,6 @@ rand = { workspace = true }
 s2n-quic = { workspace = true }
 s2n-tls = { workspace = true }
 tokio = { workspace = true }
-zeroize = { workspace = true }
 
 [lints]
 workspace = true

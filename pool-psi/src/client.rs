@@ -115,7 +115,7 @@ impl PsiClient {
     }
 
     /// The OPRF session's `uid`, shared with the server.
-    pub fn uid(&self) -> &Uid {
+    pub fn uid(&self) -> Uid {
         self.oprf.uid()
     }
 }

@@ -17,6 +17,7 @@ use crate::voprf::{MAX_VOPRF_BATCH_EVALUATIONS, VerifiedKey};
 use cryprot_net::Connection;
 use pool_prf::prf::PrfOutput;
 use rand::CryptoRng;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
@@ -33,7 +34,13 @@ pub enum ClientError {
 pub struct OprfClient {
     conn: Connection,
     channel: ClientChannel,
-    state: ClientState,
+    state: Arc<Mutex<ClientState>>,
+}
+
+fn lock(state: &Mutex<ClientState>) -> MutexGuard<'_, ClientState> {
+    state
+        .lock()
+        .expect("a panic while evaluating poisoned the session")
 }
 
 impl OprfClient {
@@ -51,7 +58,7 @@ impl OprfClient {
         Ok(Self {
             conn,
             channel,
-            state,
+            state: Arc::new(Mutex::new(state)),
         })
     }
 
@@ -67,7 +74,7 @@ impl OprfClient {
         Ok(Self {
             conn,
             channel,
-            state,
+            state: Arc::new(Mutex::new(state)),
         })
     }
 
@@ -85,12 +92,14 @@ impl OprfClient {
         rng: &mut impl CryptoRng,
     ) -> Result<Uid, ClientError> {
         let tau = tau_for(evaluations);
-        let pk = self.state.voprf().map(|voprf| *voprf.pk());
-        self.state = match &pk {
+        let pk = lock(&self.state).voprf().map(|voprf| *voprf.pk());
+        let state = match &pk {
             Some(pk) => preproc_client_voprf(&mut self.conn, pk, tau, rng).await?,
             None => preproc_client(&mut self.conn, tau, rng).await?,
         };
-        Ok(*self.state.uid())
+        let uid = *state.uid();
+        self.state = Arc::new(Mutex::new(state));
+        Ok(uid)
     }
 
     /// Evaluate the OPRF on public tag `tag` and private input `x`, consuming
@@ -98,7 +107,11 @@ impl OprfClient {
     ///
     /// The server sees `tag`, but learns neither `x` nor the output.
     pub async fn evaluate(&mut self, tag: &[u8], x: &[u8]) -> Result<PrfOutput, ClientError> {
-        let (req, fin) = request(&mut self.state, tag, x)?;
+        let state = Arc::clone(&self.state);
+        let (tag, x) = (tag.to_vec(), x.to_vec());
+        let (req, fin) = tokio::task::spawn_blocking(move || request(&mut lock(&state), &tag, &x))
+            .await
+            .expect("requesting panicked")?;
         let resp = self.channel.exchange(req).await?;
         let output = tokio::task::spawn_blocking(move || finalize(&fin, &resp))
             .await
@@ -117,9 +130,14 @@ impl OprfClient {
         tag: &[u8],
         inputs: &[T],
     ) -> Result<Vec<PrfOutput>, ClientError> {
-        let (req, fin) = request_batch(&mut self.state, tag, inputs)?;
+        let state = Arc::clone(&self.state);
+        let tag = tag.to_vec();
+        let inputs: Vec<Vec<u8>> = inputs.iter().map(|x| x.as_ref().to_vec()).collect();
+        let (req, fin) =
+            tokio::task::spawn_blocking(move || request_batch(&mut lock(&state), &tag, &inputs))
+                .await
+                .expect("requesting panicked")?;
         let resp = self.channel.exchange(req).await?;
-        // As in `evaluate`.
         let outputs = tokio::task::spawn_blocking(move || finalize_batch(&fin, &resp))
             .await
             .expect("finalizing panicked");
@@ -127,20 +145,20 @@ impl OprfClient {
     }
 
     pub fn remaining_evaluations(&self) -> usize {
-        evaluations_for(self.state.remaining_runs())
+        evaluations_for(lock(&self.state).remaining_runs())
     }
 
     /// Most evaluations one [`Self::evaluate_batch`] call may carry:
     /// [`MAX_BATCH_EVALUATIONS`], or [`MAX_VOPRF_BATCH_EVALUATIONS`] for a
     /// VOPRF.
     pub fn max_batch_evaluations(&self) -> usize {
-        match self.state.voprf() {
+        match lock(&self.state).voprf() {
             Some(_) => MAX_VOPRF_BATCH_EVALUATIONS,
             None => MAX_BATCH_EVALUATIONS,
         }
     }
 
-    pub fn uid(&self) -> &Uid {
-        self.state.uid()
+    pub fn uid(&self) -> Uid {
+        *lock(&self.state).uid()
     }
 }

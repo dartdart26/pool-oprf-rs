@@ -32,7 +32,6 @@ pool-prf = { workspace = true }
 pool-eval = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-zeroize = { workspace = true }
 
 rand = { workspace = true, optional = true }
 p3-air = { workspace = true, optional = true }

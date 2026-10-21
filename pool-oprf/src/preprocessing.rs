@@ -228,11 +228,8 @@ pub struct ServerState {
     voprf: Option<ServerVoprf>,
 }
 
-fn into_array<T: Copy, const N: usize>(mut v: Vec<T>, what: &str) -> [T; N] {
-    let array = v[..].try_into().expect(what);
-    v.clear();
-    v.spare_capacity_mut().zeroize();
-    array
+fn into_array<T: Copy, const N: usize>(v: Vec<T>, what: &str) -> [T; N] {
+    v[..].try_into().expect(what)
 }
 
 impl ClientState {
@@ -676,7 +673,7 @@ pub async fn preproc_server(
 
     if let Some(voprf) = &mut voprf {
         voprf
-            .send_pads_commitments(&sender_out.blocks, evaluations_for(tau))
+            .send_pads_commitments(sender_out.blocks, evaluations_for(tau))
             .await?;
     }
 
@@ -685,7 +682,7 @@ pub async fn preproc_server(
     msg_send.send(bhat.to_vec()).await?;
 
     let voprf = match voprf {
-        Some(voprf) => Some(voprf.prove(sk, &r_s, bhat, sender_out.blocks).await?),
+        Some(voprf) => Some(voprf.prove(sk, &r_s, bhat).await?),
         None => None,
     };
 

@@ -238,12 +238,21 @@ impl<'a> ClientPreprocessing<'a> {
         ot_blocks: &[[Block; 2]],
         evaluations: usize,
     ) -> Result<(), PreprocError> {
-        for v in 0..evaluations {
-            let c: MasksCommitments = array::from_fn(|i| {
-                ot_blocks[i].map(|ot_block| {
-                    masks::commit(&expand(&ot_block, first_run(v)), randomness(&ot_block))
+        let ot_blocks = ot_blocks.to_vec();
+        let c: Vec<MasksCommitments> = tokio::task::spawn_blocking(move || {
+            (0..evaluations)
+                .map(|v| {
+                    array::from_fn(|i| {
+                        ot_blocks[i].map(|ot_block| {
+                            masks::commit(&expand(&ot_block, first_run(v)), randomness(&ot_block))
+                        })
+                    })
                 })
-            });
+                .collect()
+        })
+        .await
+        .expect("committing panicked");
+        for c in c {
             self.masks_tx.send(c.to_vec()).await?;
             self.c.push(c);
         }
@@ -321,6 +330,8 @@ pub(crate) struct ServerPreprocessing {
     proof_tx: SendStream<PreprocessingProof>,
     /// `c^v` of each evaluation `v`.
     c: Vec<MasksCommitments>,
+    /// The 1-out-of-Δ OT blocks of each run, once `d` is sent.
+    delta_ot_blocks: Vec<[Block; DELTA]>,
 }
 
 impl ServerPreprocessing {
@@ -332,6 +343,7 @@ impl ServerPreprocessing {
             pads_tx,
             proof_tx,
             c: Vec::new(),
+            delta_ot_blocks: Vec::new(),
         })
     }
 
@@ -342,27 +354,37 @@ impl ServerPreprocessing {
         r_s: &[RsEntry],
         evaluations: usize,
     ) -> Result<(), PreprocError> {
-        for v in 0..evaluations {
+        let mut c = Vec::with_capacity(evaluations);
+        for _ in 0..evaluations {
             let message = self
                 .masks_rx
                 .next()
                 .await
                 .ok_or(PreprocError::UnexpectedClose)??;
-            let c: MasksCommitments = message
+            let c_v: MasksCommitments = message
                 .try_into()
                 .map_err(|_| PreprocError::Malformed("c has wrong length"))?;
-            let matches = r_s.iter().zip(&c).all(|(entry, c_i)| {
-                c_i[usize::from(entry.b)]
-                    == masks::commit(
-                        &expand(&entry.ot_block, first_run(v)),
-                        randomness(&entry.ot_block),
-                    )
-            });
-            if !matches {
-                return Err(PreprocError::MasksMismatch);
-            }
-            self.c.push(c);
+            c.push(c_v);
         }
+        let r_s = r_s.to_vec();
+        let (c, matches) = tokio::task::spawn_blocking(move || {
+            let matches = c.iter().enumerate().all(|(v, c_v)| {
+                r_s.iter().zip(c_v).all(|(entry, c_i)| {
+                    c_i[usize::from(entry.b)]
+                        == masks::commit(
+                            &expand(&entry.ot_block, first_run(v)),
+                            randomness(&entry.ot_block),
+                        )
+                })
+            });
+            (c, matches)
+        })
+        .await
+        .expect("checking panicked");
+        if !matches {
+            return Err(PreprocError::MasksMismatch);
+        }
+        self.c = c;
         Ok(())
     }
 
@@ -370,14 +392,24 @@ impl ServerPreprocessing {
     /// 1-out-of-Δ OT blocks as the random values, and send `d^{v, k}`.
     pub(crate) async fn send_pads_commitments(
         &mut self,
-        delta_ot_blocks: &[[Block; DELTA]],
+        delta_ot_blocks: Vec<[Block; DELTA]>,
         evaluations: usize,
     ) -> Result<(), PreprocError> {
-        for v in 0..evaluations {
-            let d = delta_ot_blocks[v * RUNS_PER_EVALUATION..(v + 1) * RUNS_PER_EVALUATION]
-                .iter()
-                .map(|ot_blocks| array::from_fn(|j| pad_commitment(&ot_blocks[j])))
+        let (delta_ot_blocks, d) = tokio::task::spawn_blocking(move || {
+            let d: Vec<PadsMessage> = (0..evaluations)
+                .map(|v| {
+                    delta_ot_blocks[v * RUNS_PER_EVALUATION..(v + 1) * RUNS_PER_EVALUATION]
+                        .iter()
+                        .map(|ot_blocks| array::from_fn(|j| pad_commitment(&ot_blocks[j])))
+                        .collect()
+                })
                 .collect();
+            (delta_ot_blocks, d)
+        })
+        .await
+        .expect("committing panicked");
+        self.delta_ot_blocks = delta_ot_blocks;
+        for d in d {
             self.pads_tx.send(d).await?;
         }
         Ok(())
@@ -390,35 +422,37 @@ impl ServerPreprocessing {
         sk: &SecretKey,
         r_s: &[RsEntry],
         b_bar: [u8; N],
-        delta_ot_blocks: Vec<[Block; DELTA]>,
     ) -> Result<ServerVoprf, PreprocError> {
-        let witness = PreprocessingWitness {
-            sk: sk.clone(),
-            ot_blocks: array::from_fn(|i| randomness(&r_s[i].ot_block)),
-            evaluations: (0..self.c.len())
+        let sk = sk.clone();
+        let r_s = r_s.to_vec();
+        let c = self.c;
+        let delta_ot_blocks = self.delta_ot_blocks;
+        let (delta_ot_blocks, m, proof) = tokio::task::spawn_blocking(move || {
+            let evaluations = (0..c.len())
                 .map(|v| {
                     // Run 0 of evaluation `v` is run `v · RUNS_PER_EVALUATION`.
                     let m_randomness =
                         mask_sum_randomness(&delta_ot_blocks[v * RUNS_PER_EVALUATION]);
-                    evaluation_witness(sk, r_s, v, m_randomness)
+                    evaluation_witness(&sk, &r_s, v, m_randomness)
                 })
-                .collect(),
-        };
-        let statement = PreprocessingStatement::honest(&witness, b_bar, self.c);
-        // Proving takes long. Off the async runtime, the connection keeps
-        // being served meanwhile.
-        let (statement, proof) = tokio::task::spawn_blocking(move || {
+                .collect();
+            let witness = PreprocessingWitness {
+                ot_blocks: array::from_fn(|i| randomness(&r_s[i].ot_block)),
+                evaluations,
+                sk,
+            };
+            let statement = PreprocessingStatement::honest(&witness, b_bar, c);
             let proof = Plonky3::new().prove(&statement, &witness);
-            (statement, proof)
+            let m: Vec<_> = statement
+                .evaluations
+                .into_iter()
+                .map(|evaluation| evaluation.m)
+                .collect();
+            (delta_ot_blocks, m, proof)
         })
         .await
         .expect("proving panicked");
         let proof = proof?;
-        let m = statement
-            .evaluations
-            .into_iter()
-            .map(|evaluation| evaluation.m)
-            .collect();
         self.proof_tx.send(PreprocessingProof { m, proof }).await?;
         Ok(ServerVoprf { delta_ot_blocks })
     }
@@ -544,7 +578,7 @@ mod tests {
             },
             async {
                 let mut server = ServerPreprocessing::open(&mut server_conn).await?;
-                server.send_pads_commitments(&other, 1).await
+                server.send_pads_commitments(other, 1).await
             },
         );
         server.expect("sending");
@@ -577,8 +611,8 @@ mod tests {
             async {
                 let mut server = ServerPreprocessing::open(&mut server_conn).await?;
                 server.receive_masks_commitments(&r_s, 1).await?;
-                server.send_pads_commitments(&delta_ot_blocks, 1).await?;
-                server.prove(&sk, &r_s, b_bar, delta_ot_blocks).await
+                server.send_pads_commitments(delta_ot_blocks, 1).await?;
+                server.prove(&sk, &r_s, b_bar).await
             },
         );
         server.expect("proving");

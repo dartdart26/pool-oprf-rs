@@ -14,7 +14,6 @@ use crate::constraints::t_sum_of_masks::SumOfMasks;
 use crate::traits::{Commitment, Constraint, Statement};
 use pool_prf::params::{N, RUNS_PER_EVALUATION, Zq};
 use pool_prf::prf::SecretKey;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct PreprocessingStatement<PK, C, M> {
@@ -31,7 +30,7 @@ pub struct EvaluationStatement<C, M> {
     pub m: M,
 }
 
-#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone)]
 pub struct PreprocessingWitness {
     pub sk: SecretKey,
     /// `ot_block_{b_i, i}` of each `i`: the server's binary OT blocks.
@@ -39,7 +38,7 @@ pub struct PreprocessingWitness {
     pub evaluations: Vec<EvaluationWitness>,
 }
 
-#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone)]
 pub struct EvaluationWitness {
     /// `r^{v, k}_{b_i, i}` of each `i` and run `k`.
     pub masks: [[Zq; RUNS_PER_EVALUATION]; N],
